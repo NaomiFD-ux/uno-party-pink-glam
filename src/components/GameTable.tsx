@@ -4,7 +4,7 @@ import type {Round} from '../utils/round';
 import {EchoEffect} from './EchoEffect';
 import {newRound,moveRound,canPlay,mustTakeDrawStack,Move} from '../utils/round';
 import { CardCountFan } from './CardCountFan';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Card, CardColor, Player, PlayDirection, GameSettings } from '../types/game';
 import { CardView } from './CardView';
 import { ColorPickerModal } from './ColorPickerModal';
@@ -76,6 +76,35 @@ export const GameTable: React.FC<GameTableProps> = ({
   const topCard=discardPile.at(-1)!,humanPlayer=players[0],isHumanTurn=activePlayerIndex===0&&!round.winner;
   const gameWinner=players.find(p=>p.id===round.winner)||null,isColorPickerOpen=!!pendingWildCard;
   const rootRef=useRef<HTMLDivElement>(null);
+  const [dealPaths,setDealPaths]=useState<Record<string,{x:number;y:number;dx:number;dy:number}>>({});
+  const dealSeatIds=(online?.room.round?.players.map(p=>mapId(p.id))||players.map(p=>p.id));
+  const dealSeatKey=dealSeatIds.join(',');
+  useLayoutEffect(()=>{
+    if(paused)return;
+    document.documentElement.classList.add('game-viewport-locked');
+    return()=>document.documentElement.classList.remove('game-viewport-locked');
+  },[paused]);
+  useLayoutEffect(()=>{
+    const root=rootRef.current;
+    if(!root||paused||phase==='playing')return;
+    const measure=()=>{
+      const bounds=root.getBoundingClientRect(),source=root.querySelector('.shuffle-stack')?.getBoundingClientRect();
+      if(!source?.width)return;
+      const x=source.left+source.width/2-bounds.left-22,y=source.top+source.height/2-bounds.top-33;
+      const paths:Record<string,{x:number;y:number;dx:number;dy:number}>={};
+      for(const seat of root.querySelectorAll<HTMLElement>('[data-player-id]')){
+        const id=seat.dataset.playerId!;
+        const target=(id==='player_human'?root.querySelector('.hand-cards'):seat.querySelector('.card-count-fan'))||seat;
+        const rect=target.getBoundingClientRect();
+        paths[id]={x,y,dx:rect.left+rect.width/2-source.left-source.width/2,dy:rect.top+rect.height/2-source.top-source.height/2};
+      }
+      setDealPaths(paths);
+    };
+    measure();
+    const observer=new ResizeObserver(measure);observer.observe(root);
+    window.addEventListener('resize',measure);
+    return()=>{observer.disconnect();window.removeEventListener('resize',measure);};
+  },[phase,paused,dealSeatKey]);
   const liveRound=useRef(round);liveRound.current=round;
   const busyRef=useRef(false);
   const [drawing,setDrawing]=useState(false);
@@ -198,7 +227,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const getFeltClass=()=>({berry:'felt-table',ruby:'felt-table-ruby',emerald:'felt-table-emerald',midnight:'felt-table-midnight'}[settings.tableFelt]);
   return (
     <div ref={rootRef} data-player-count={players.length} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
-      {phase !== 'playing' && <div className={`deal-overlay ${phase}`} role="status" aria-live="polite"><div className="shuffle-stack"><i/><i/><i/><b>UNO</b></div>{phase === 'deal' && Array.from({length:settings.initialHandSize * players.length},(_,i)=><span key={i} className={`flying-card seat-${i%players.length}`} style={{animationDelay:`${i*65}ms`}}>UNO</span>)}<h2>{phase === 'shuffle' ? 'A little shuffle ✦' : 'Your cards are on their way…'}</h2><p>{phase === 'shuffle' ? 'Fresh deck. Fresh possibilities.' : `${settings.initialHandSize} cards each. Let’s play.`}</p></div>}
+      {phase !== 'playing' && <div className={`deal-overlay ${phase}`} role="status" aria-live="polite"><div className="shuffle-stack"><i/><i/><i/><b>UNO</b></div>{phase === 'deal' && Array.from({length:settings.initialHandSize * players.length},(_,i)=><span key={i} className="flying-card" style={{left:dealPaths[dealSeatIds[i%players.length]]?.x,top:dealPaths[dealSeatIds[i%players.length]]?.y,'--deal-x':`${dealPaths[dealSeatIds[i%players.length]]?.dx||0}px`,'--deal-y':`${dealPaths[dealSeatIds[i%players.length]]?.dy||0}px`,animationDelay:`${i*Math.min(65,1900/Math.max(1,settings.initialHandSize*players.length-1))}ms`} as React.CSSProperties}>UNO</span>)}<h2>{phase === 'shuffle' ? 'A little shuffle ✦' : 'Your cards are on their way…'}</h2><p>{phase === 'shuffle' ? 'Fresh deck. Fresh possibilities.' : `${settings.initialHandSize} cards each. Let’s play.`}</p></div>}
       {/* Top Table Control Bar */}
       <div className="flex items-center justify-between gap-2 max-w-4xl mx-auto w-full z-20 mb-1">
         <div className="flex items-center gap-2">

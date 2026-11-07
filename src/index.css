@@ -295,7 +295,6 @@ input[type=checkbox] { accent-color:#b10e6b; width:19px; height:19px; flex-shrin
 .shuffle-stack i:nth-child(1) { transform:rotate(-13deg) translateX(-8px); }.shuffle-stack i:nth-child(2) { transform:rotate(12deg) translateX(8px); }
 .shuffle .shuffle-stack i:nth-child(1) { animation:shuffle-left .3s ease-in-out infinite alternate; }.shuffle .shuffle-stack i:nth-child(2) { animation:shuffle-right .3s ease-in-out infinite alternate; }
 .flying-card { position:absolute; width:44px; height:66px; top:calc(50% - 62px); left:calc(50% - 22px); border:2px solid white; border-radius:8px; background:#b10e6b; display:grid; place-items:center; font:800 italic 11px var(--font-heading); opacity:0; animation:deal-flight .4s ease-out both; }
-.seat-0 { --deal-x:0px;--deal-y:35vh; }.seat-1 { --deal-x:-36vw;--deal-y:0px; }.seat-2 { --deal-x:0px;--deal-y:-33vh; }.seat-3 { --deal-x:36vw;--deal-y:0px; }
 @keyframes shuffle-left { to { transform:translateX(-48px) rotate(-20deg); } }@keyframes shuffle-right { to { transform:translateX(48px) rotate(20deg); } }
 @keyframes deal-flight { 0% { opacity:1; transform:translate(0,0) scale(1); } 85% { opacity:1; } 100% { opacity:0; transform:translate(var(--deal-x),var(--deal-y)) rotate(20deg) scale(.7); } }
 [data-phase=playing] .hand-tray { animation:hand-arrive .45s ease-out; }
@@ -626,7 +625,6 @@ input[type=checkbox] { accent-color:#b10e6b; width:19px; height:19px; flex-shrin
 .game-screen[data-player-count="5"] .opponent:nth-child(4) { right:0; left:auto; top:42%; transform:none; }
 .game-screen[data-player-count="5"] .opponent:nth-child(3) .bot-chat-bubble { left:0; right:auto; }
 .game-screen[data-player-count="5"] .opponent:nth-child(4) .bot-chat-bubble { left:auto; right:0; }
-.game-screen[data-player-count="5"] .seat-1 { --deal-x:-23vw;--deal-y:-32vh; }.game-screen[data-player-count="5"] .seat-2 { --deal-x:23vw;--deal-y:-32vh; }.game-screen[data-player-count="5"] .seat-3 { --deal-x:-36vw;--deal-y:0; }.game-screen[data-player-count="5"] .seat-4 { --deal-x:36vw;--deal-y:0; }
 .table-piles > .pile-turn-label { position:absolute; bottom:calc(100% + 22px); left:50%; transform:translateX(-50%); width:max-content; margin:0; padding:0; color:white; text-align:center; font:800 14px var(--font-heading); letter-spacing:.17em; text-shadow:0 0 5px #fff,0 0 13px #ffffffa0,0 0 24px #ffffff60; pointer-events:none; z-index:25; }
 /* Shared-room status stays compact and outside the playing surface. */
 .online-notice{margin:8px auto;padding:10px 14px;border-radius:16px;background:#fff0f5;color:#890044;font-size:12px;max-width:640px;display:flex;align-items:center;gap:12px}
@@ -639,3 +637,13 @@ input[type=checkbox] { accent-color:#b10e6b; width:19px; height:19px; flex-shrin
 .game-screen[data-player-count="2"] .opponent .bot-chat-bubble{top:calc(100% + 10px);bottom:auto;left:50%;right:auto;translate:-50% 0}
 .recovery-code{margin:24px 0;padding:18px;border-radius:18px;background:#fff;border:1px solid #f3b2d1;color:#8e004e;font-family:monospace;font-size:16px;overflow-wrap:anywhere;user-select:text;text-align:center}
 .resume-table-actions{display:flex;flex-direction:column;align-items:center;gap:10px;margin:14px auto}
+
+/* Four explicit color segments render consistently in iPhone Safari. */
+.uno-wild-colors { background:conic-gradient(#ee2334 0deg 90deg,#087bea 90deg 180deg,#04a95b 180deg 270deg,#f4b000 270deg 360deg); color:white !important; flex-shrink:0; }
+html.game-viewport-locked,html.game-viewport-locked body { overflow:hidden; overscroll-behavior:none; }
+html.game-viewport-locked .app-shell[data-screen=table] { position:fixed; inset:0; height:100dvh; min-height:0; overflow:hidden; }
+html.game-viewport-locked [data-screen=table] > main { min-height:0; }
+html.game-viewport-locked .game-screen { height:100dvh; min-height:0; overflow:hidden; }
+html.game-viewport-locked .game-felt { min-height:0; }
+html.game-viewport-locked .hand-dock { flex-shrink:0; max-height:60dvh; }
+html.game-viewport-locked .hand-tray { min-height:0; overflow-y:auto; overscroll-behavior:contain; }

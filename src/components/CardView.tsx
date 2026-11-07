@@ -73,7 +73,7 @@ export const CardView: React.FC<CardViewProps> = ({
               <span className="font-extrabold text-[10px]">W</span>
             ) : (
               <div className="relative flex items-center justify-center">
-                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-conic from-rose-500 via-yellow-400 via-emerald-400 to-blue-500 border-2 border-white shadow-md flex items-center justify-center">
+                <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-full uno-wild-colors border-2 border-white shadow-md flex items-center justify-center">
                   <Sparkles size={14} className="text-white drop-shadow" />
                 </div>
               </div>
@@ -87,7 +87,7 @@ export const CardView: React.FC<CardViewProps> = ({
               <span className="font-extrabold text-[10px]">+4</span>
             ) : (
               <div className="flex items-center gap-0.5">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-conic from-pink-500 via-amber-400 via-emerald-400 to-cyan-500 border-2 border-white shadow-md flex items-center justify-center font-extrabold text-white text-xs sm:text-sm">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full uno-wild-colors border-2 border-white shadow-md flex items-center justify-center font-extrabold text-white text-xs sm:text-sm">
                   +4
                 </div>
               </div>
