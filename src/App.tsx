@@ -1,3 +1,4 @@
+import {InvitationScreen} from './components/InvitationScreen';
 import { useState, useEffect, useRef } from 'react';
 import { UserProfile, GameSettings } from './types/game';
 import { Header, AppTab } from './components/Header';
@@ -21,6 +22,8 @@ const DEFAULT_SETTINGS:GameSettings = {tableFelt:'berry',cardBack:'pink_star',st
 function loadProfile(id:string,name:string) {try {const saved=JSON.parse(localStorage.getItem(`uno_profile_${id}`)||'null');return saved?{...DEFAULT_PROFILE,...saved}:{...DEFAULT_PROFILE,id,username:name};} catch {return {...DEFAULT_PROFILE,id,username:name};}}
 export default function App() {
   const [session,setSession] = useState(readSession);
+  const [invitation,setInvitation]=useState(()=>new URLSearchParams(location.search).get('invite')||'');
+  const [inviteAuth,setInviteAuth]=useState(false);
   const [connection,setConnection]=useState<GameConnection|null>(null),[,redraw]=useState(0),[onlineError,setOnlineError]=useState('');
   const previousRoom=useRef(''),previousRound=useRef(''),inviteAttempt=useRef('');
 
@@ -36,7 +39,7 @@ export default function App() {
   useEffect(()=>{if(!session||session.id==='guest'){setConnection(null);return;}const c=new GameConnection({id:session.id,name:profile.username,avatar:profile.avatar});setConnection(c);const unsubscribe=c.subscribe(()=>{redraw(n=>n+1);const r=c.room;
     if(r){if(r.round&&previousRound.current!==r.round.id){previousRound.current=r.round.id;setCurrentTab('table');setRoomOpen(false);}else if(!r.round&&previousRoom.current!==r.code){setCurrentTab('lobby');setRoomOpen(false);}previousRoom.current=r.code;}
     else if(previousRoom.current){previousRoom.current='';previousRound.current='';setCurrentTab('lobby');}
-    const code=new URLSearchParams(location.search).get('room')?.toUpperCase();if(c.status==='connected'&&!r&&code&&inviteAttempt.current!==code){inviteAttempt.current=code;void c.send('join',{code}).then(()=>history.replaceState({},'',location.pathname)).catch(e=>setOnlineError(e.message));}
+    const code=new URLSearchParams(location.search).get('room')?.toUpperCase();if(c.status==='connected'&&!r&&code&&!new URLSearchParams(location.search).has('invite')&&inviteAttempt.current!==code){inviteAttempt.current=code;void c.send('join',{code}).then(()=>history.replaceState({},'',location.pathname)).catch(e=>setOnlineError(e.message));}
   });return()=>{unsubscribe();c.close();previousRoom.current='';previousRound.current='';inviteAttempt.current='';};},[session?.id]);
   useEffect(()=>{if(!session||session.id==='guest')return;let cancelled=false;remoteProfile(session.id).then(p=>{if(p&&!cancelled)setProfile(prev=>({...prev,...p,avatar:p.avatar||prev.avatar}));}).catch(e=>setOnlineError(e.message));return()=>{cancelled=true;};},[session?.id,connection?.room?.round?.winner,connection?.profileVersion]);
   useEffect(()=>{let cancelled=false;restoreAccount().then(user=>{if(cancelled)return;if(user){saveSession(user,true);setSession(old=>old?.id===user.id?old:user);setProfile(prev=>prev.id===user.id?prev:{...loadProfile(user.id,user.name),...(user.avatar?{avatar:user.avatar}:{})});}else if(readSession()?.id!=='guest'){clearSession();setSession(null);}}).catch(e=>setOnlineError(e.message));const expired=()=>{clearSession();setSession(null);setOnlineError('Your session ended. Log in to return to your saved game.');};window.addEventListener('uno-session-expired',expired);return()=>{cancelled=true;window.removeEventListener('uno-session-expired',expired);};},[]);
@@ -46,7 +49,10 @@ export default function App() {
   const openSettings=()=>{if(currentTab!=='settings')setPreviousTab(currentTab);setCurrentTab('settings');};
   const navigate=(tab:AppTab)=>{if(tab==='settings'){openSettings();return;} if(tab==='table'&&onlineRoom){setCurrentTab(onlineRoom.round?'table':'lobby');return;} if(tab==='table'&&!matchActive){setRoomOpen(true);setCurrentTab('lobby');return;} setRoomOpen(false);setCurrentTab(tab);};
   const logout=()=>{void signOut().then(()=>{setSession(null);setMatchActive(false);setRoomOpen(false);}).catch(e=>setOnlineError(e.message));};
-  if(!session)return <AuthScreen onEnter={(user,remember)=>{saveSession(user,remember);setProfile({...loadProfile(user.id,user.name),...(user.avatar?{avatar:user.avatar}:{})});setSession(user);setCurrentTab('lobby');}}/>;
+  const enterAccount=(user:{id:string;name:string;avatar?:string},remember:boolean)=>{saveSession(user,remember);setProfile({...loadProfile(user.id,user.name),...(user.avatar?{avatar:user.avatar}:{})});setSession(user);setCurrentTab('lobby');setInviteAuth(false);};
+  if(invitation&&!inviteAuth)return <InvitationScreen token={invitation} signedIn={!!session&&session.id!=='guest'} connected={connection?.status==='connected'} onLogin={()=>setInviteAuth(true)} onJoin={async code=>{await sendOnline('join',{code});history.replaceState({},'',location.pathname);setInvitation('');setCurrentTab(connection?.room?.round?'table':'lobby');}} onDismiss={()=>{history.replaceState({},'',location.pathname);setInvitation('');setInviteAuth(false);}}/>;
+  if(inviteAuth)return <AuthScreen initialMode="login" onBack={()=>setInviteAuth(false)} onEnter={enterAccount}/>;
+  if(!session)return <AuthScreen onEnter={enterAccount}/>;
   return <div data-screen={currentTab} className="app-shell min-h-screen flex flex-col pb-20 md:pb-6">
     <Header currentTab={currentTab} onSelectTab={navigate} userAvatar={profile.avatar} userName={profile.username}/>
     <main className="flex-1 w-full flex flex-col">

@@ -38,3 +38,39 @@ test('real account game: shared invite code, saved hand on another device, round
  assert(p.room.round.winner);const winner=p.room.round.winner;assert.deepEqual(p.room.wins,q.room.wins);const ap=(await a.request('/profile')).data.profile,bp=(await b.request('/profile')).data.profile;assert.equal(ap.gamesPlayed,1);assert.equal(bp.gamesPlayed,1);assert.equal(ap.wins+bp.wins,1);assert.equal(ap.matchHistory[0].tableName,'Friends Night');const saved=JSON.stringify(p.room.wins),aCookie=a.cookie;
  p.ws.terminate();q.ws.terminate();await server.close();const restart=await launch(db);server=restart.server;url=restart.url;const restored=client(url);restored.cookie=aCookie;const history=(await restored.request('/profile')).data.profile;assert.equal(history.gamesPlayed,1);assert.equal(history.wins,ap.wins);p=await socket(url,(await restored.request('/auth/ticket',{})).data.ticket);await delay();assert.equal(JSON.stringify(p.room.wins),saved);assert.equal(p.room.round.winner,winner);
  }finally{p?.ws.terminate();q?.ws.terminate();await server.close();rmSync(dir,{recursive:true,force:true});}});
+
+test('personal room invitations survive login and restart and expose only the invited table preview',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-invites-')),db=join(dir,'data.sqlite');let {server,url}=await launch(db);let host:any,friend:any;
+ try{
+  const a=client(url),b=client(url),c=client(url);
+  await a.request('/auth/signup',{name:'Inviter',email:'inviter@example.invalid',password,remember:true});
+  await b.request('/auth/signup',{name:'Friend',email:'invite-friend@example.invalid',password,remember:true});
+  await c.request('/auth/signup',{name:'Other',email:'invite-other@example.invalid',password,remember:true});
+  host=await socket(url,(await a.request('/auth/ticket',{})).data.ticket);
+  await host.send('create',{name:'Exact Pink Table',handSize:7});await delay();const code=host.room.code;
+  assert.equal((await client(url).request(`/rooms/${code}/invite`,{})).response.status,401);
+  assert.equal((await c.request(`/rooms/${code}/invite`,{})).response.status,403);
+  assert.equal((await a.request(`/rooms/${code}/invite`,{},'POST','http://evil')).response.status,403);
+  const token=(await a.request(`/rooms/${code}/invite`,{})).data.token;assert.equal(token.length,43);
+  assert.equal((await a.request(`/rooms/${code}/invite`,{})).data.token,token);
+  const publicPreview=await client(url).request(`/invites/${token}`);
+  assert.equal(publicPreview.response.status,200);assert.equal(publicPreview.data.code,code);assert.equal(publicPreview.data.inviter.name,'Inviter');
+  assert.equal(publicPreview.data.name,'Exact Pink Table');assert.equal(publicPreview.data.canJoin,true);
+  assert(!/email|password|hand|recovery|session/i.test(JSON.stringify(publicPreview.data)));
+  assert.equal((await b.request('/auth/login',{handle:'Friend',password,remember:true})).response.status,200);
+  friend=await socket(url,(await b.request('/auth/ticket',{})).data.ticket);
+  await friend.send('join',{code:publicPreview.data.code});await delay();assert.equal(friend.room.code,code);
+  const friendToken=(await b.request(`/rooms/${code}/invite`,{})).data.token;assert.notEqual(friendToken,token);
+  const shared=(await client(url).request(`/invites/${friendToken}`)).data;
+  assert.equal(shared.inviter.name,'Friend');assert.deepEqual(shared.players.map((p:any)=>p.name),['Inviter','Friend']);
+  const ac=a.cookie,bc=b.cookie;host.ws.terminate();friend.ws.terminate();await server.close();
+  const restarted=await launch(db);server=restarted.server;url=restarted.url;
+  const restoredA=client(url),restoredB=client(url);restoredA.cookie=ac;restoredB.cookie=bc;
+  assert.equal((await client(url).request(`/invites/${token}`)).data.code,code);
+  host=await socket(url,(await restoredA.request('/auth/ticket',{})).data.ticket);friend=await socket(url,(await restoredB.request('/auth/ticket',{})).data.ticket);await delay();
+  await host.send('ready',{ready:true});await delay();await friend.send('ready',{ready:true});await delay();await host.send('start');await delay();
+  const playing=(await client(url).request(`/invites/${token}`)).data;assert.equal(playing.status,'playing');assert.equal(playing.canJoin,false);
+  assert(!('hand' in playing));assert.equal((await restoredB.request(`/invites/${token}`)).data.canJoin,true);
+  await host.send('leave');await delay();assert.equal((await client(url).request(`/invites/${token}`)).response.status,410);
+ }finally{host?.ws.terminate();friend?.ws.terminate();await server.close();rmSync(dir,{recursive:true,force:true});}
+});

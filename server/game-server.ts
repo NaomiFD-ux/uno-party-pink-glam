@@ -29,6 +29,28 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
   if(req.method==='OPTIONS'){res.writeHead(origin&&options.allowedOrigins.includes(origin)?204:403);res.end();return;}
   if(req.url==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,auth:'server-accounts'}));return;}
   if(await accounts.route(req,res))return;
+  const path=req.url?.split('?')[0]||'';
+  const createInvite=path.match(/^\/rooms\/([A-Z0-9]{6})\/invite$/);
+  const readInvite=path.match(/^\/invites\/([A-Za-z0-9_-]{43})$/);
+  if(createInvite||readInvite){
+   res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
+   const fail=(status:number,error:string)=>{res.statusCode=status;res.end(JSON.stringify({error}));};
+   if(createInvite){
+    if(req.method!=='POST'){fail(405,'Use the Copy Link button to create an invitation.');return;}
+    if(!origin||!options.allowedOrigins.includes(origin)){fail(403,'This request is not allowed.');return;}
+    const current=accounts.session(req);if(!current){fail(401,'Log in to invite your friends.');return;}
+    const room=rooms.get(createInvite[1]);if(!room?.seats.some(p=>p.id===current.user.id)){fail(403,'Join this room before inviting someone.');return;}
+    let invite=store.db.prepare('SELECT token FROM room_invites WHERE code=? AND inviter_id=?').get(room.code,current.user.id) as {token:string}|undefined;
+    if(!invite){invite={token:randomBytes(32).toString('base64url')};store.db.prepare('INSERT INTO room_invites VALUES(?,?,?)').run(invite.token,room.code,current.user.id);}
+    res.end(JSON.stringify({token:invite.token}));return;
+   }
+   if(req.method!=='GET'){fail(405,'Open the invitation to preview this room.');return;}
+   const invite=store.db.prepare('SELECT code,inviter_id FROM room_invites WHERE token=?').get(readInvite![1]) as {code:string;inviter_id:string}|undefined;
+   const room=invite?rooms.get(invite.code):undefined,inviter=room?.seats.find(p=>p.id===invite!.inviter_id);
+   if(!room||!inviter){fail(410,'This invitation is no longer available. Ask your friend for a new link.');return;}
+   const current=accounts.session(req),member=room.seats.some(p=>p.id===current?.user.id);
+   res.end(JSON.stringify({code:room.code,name:room.name,inviter:{name:inviter.name,avatar:inviter.avatar||'/default-avatar.svg'},players:room.seats.map(p=>({name:p.name,avatar:p.avatar||'/default-avatar.svg',connected:online(p.id)})),status:room.round?'playing':room.seats.length>=10?'full':'waiting',canJoin:member||(!room.round&&room.seats.length<10)}));return;
+  }
   if(req.url!=='/dev/session'||req.method!=='POST'||!options.allowDevAuth||!origin||!options.allowedOrigins.includes(origin)){res.writeHead(404);res.end();return;}
   let text='';try{for await(const chunk of req){text+=chunk;if(text.length>160000)throw Error();}const input=JSON.parse(text);if(!validText(input.name,24))throw Error();const token=randomBytes(32).toString('base64url'),user={id:randomUUID(),name:input.name.trim(),avatar:avatar(input.avatar)};store.saveSession(hash(token),user);res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify({token,user}));}catch{res.writeHead(400);res.end();}
  });

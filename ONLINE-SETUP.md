@@ -21,7 +21,7 @@ Create an account using the pink signup page, choose a picture, and save the rec
 
 To test two independent players on this computer, use http://127.0.0.1:3000/phone.html for one and http://localhost:3000/phone.html for the other. Create a different account on each origin. Ordinary tabs on the same origin share the same signed-in person.
 
-Create Room → Friends produces a shared code and link. Players join that room, tap their own seat to get ready, and the host deals. Copy Link uses the website origin and `?room=CODE`; the invite remains in the URL while a friend signs up or logs in, then joins them to the table. A returning signed-in player automatically restores their current room and private hand. Joining another device with the same account restores that player's seat; it does not create a second player.
+Create Room → Friends produces a shared code and link. Players join that room, tap their own seat to get ready, and the host deals. Copy Link beside the room code creates a saved personal invitation at the website origin with `?invite=TOKEN`. The page shows the inviter’s name/photo, room name, and current players before sign-in. The invitation stays in the URL during login/signup, then returns to the same preview so the friend can join that exact room. Already-started/full rooms show their availability; private hands and account details are never included in the preview. Existing `?room=CODE` links still join by room code. A returning signed-in player automatically restores their current room and private hand. Joining another device with the same account restores that player's seat; it does not create a second player.
 
 Create Room → Practice retains the four-bot game. Practice rounds do not alter a signed-in player's saved multiplayer statistics. Guest practice history remains browser-local. Round totals at a practice table still appear in its results screen.
 
@@ -33,7 +33,7 @@ The signup page shows a private recovery code once. Save it somewhere safe. Forg
 
 Photos are cropped to JPEG and stored in the server database. Other players receive a small image URL, not the photo bytes on every turn. Avatar URLs can be viewed by someone who has the URL. Profiles/history are read only through the signed-in account's session. Clients cannot set wins, edit somebody else's profile, or submit a round result. Results and room state save atomically; profiles derive statistics from unique completed round records.
 
-Closing the page or losing signal preserves a player's cards and seat. Their turn waits for them, without a forced timeout. Leaving the room is supported before a round or after it ends. A host kick/forfeit/end-round control is not implemented yet. Closing every browser does not erase the saved room. Use the same account to return.
+Closing the page or losing signal preserves a player's cards and seat. Their turn waits for them, without a forced timeout. Exit Game asks for confirmation. Leave Match forfeits the current hand, removes the seat, and lets remaining players continue in turn order; the last remaining player wins. A departing host transfers the host role. Simply closing the page remains different: it preserves the seat for reconnect. A host kick/end-round control is not implemented yet. Closing every browser does not erase the saved room. Use the same account to return.
 
 ## Backups
 

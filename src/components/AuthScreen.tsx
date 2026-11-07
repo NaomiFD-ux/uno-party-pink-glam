@@ -5,9 +5,9 @@ import { createAccount, logIn } from '../utils/accounts';
 
 type Mode = 'welcome' | 'login' | 'signup' | 'recover';
 export function Brand() { return <span className="uno-brand"><b>UNO</b><span>PARTY</span><i>✦</i></span>; }
-export function AuthScreen({onEnter}:{onEnter:(user:{id:string;name:string;avatar?:string},remember:boolean)=>void}) {
+export function AuthScreen({onEnter,initialMode='welcome',onBack}:{initialMode?:Mode;onBack?:()=>void;onEnter:(user:{id:string;name:string;avatar?:string},remember:boolean)=>void}) {
   const [recovery,setRecovery]=useState(''),[savedCode,setSavedCode]=useState(''),[pendingUser,setPendingUser]=useState<AccountUser|null>(null);
-  const [mode,setMode] = useState<Mode>('welcome');
+  const [mode,setMode] = useState<Mode>(initialMode);
   const [photo,setPhoto] = useState('');
   const [photoBusy,setPhotoBusy] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
@@ -48,7 +48,7 @@ export function AuthScreen({onEnter}:{onEnter:(user:{id:string;name:string;avata
   if(mode==='recover')return <div className="auth-page"><main className="auth-content"><Brand/><section className="auth-heading"><h1>Recover your account</h1><p>Use the recovery code you saved when signing up.</p></section><form className="auth-form" onSubmit={submit}><label>Email or Username<div className="auth-input"><input required value={email} onChange={e=>setEmail(e.target.value)} autoComplete="username"/></div></label><label>Recovery code<div className="auth-input"><input required value={recovery} onChange={e=>setRecovery(e.target.value)} autoComplete="off" spellCheck={false}/></div></label><label>New Password<div className="auth-input"><input type="password" required minLength={8} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="new-password"/></div></label><label>Confirm Password<div className="auth-input"><input type="password" required value={confirm} onChange={e=>setConfirm(e.target.value)} autoComplete="new-password"/></div></label>{error&&<p className="form-error" role="alert">{error}</p>}<button className="uno-primary" disabled={busy}>{busy?'One moment…':'Reset Password'}</button></form><button className="text-button" onClick={()=>switchMode('login')}>Back to Log In</button></main></div>;
   const strength = Math.min(100, password.length*6 + (/[A-Z]/.test(password)?12:0) + (/\d/.test(password)?12:0) + (/[^\w]/.test(password)?12:0));
   return <div className={`auth-page auth-${mode}`}>
-    {mode!=='welcome' && <header className="auth-topbar"><button aria-label="Back to welcome" onClick={()=>switchMode('welcome')}><ArrowLeft/></button><Brand/><span className="account-icon"><User size={21}/></span></header>}
+    {mode!=='welcome' && <header className="auth-topbar"><button aria-label={onBack?"Back to invitation":"Back to welcome"} onClick={onBack||(()=>switchMode('welcome'))}><ArrowLeft/></button><Brand/><span className="account-icon"><User size={21}/></span></header>}
     <main className="auth-content">
       {mode==='welcome' ? <>
         
@@ -77,7 +77,7 @@ export function AuthScreen({onEnter}:{onEnter:(user:{id:string;name:string;avata
         </form>
 
         <p className="auth-switch">{mode==='login'?'New to UNO Party?':'Already have an account?'} <button className="text-button" onClick={()=>switchMode(mode==='login'?'signup':'login')}>{mode==='login'?'Create Account':'Log In'} →</button></p>
-        <button className="guest-link text-button" onClick={()=>onEnter({id:'guest',name:'Guest'},false)}>Continue as a guest</button>
+        {!onBack&&<button className="guest-link text-button" onClick={()=>onEnter({id:'guest',name:'Guest'},false)}>Continue as a guest</button>}
       </>}
     </main>
   </div>;

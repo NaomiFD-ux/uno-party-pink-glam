@@ -8,3 +8,7 @@ export async function remoteProfile(_id?:string):Promise<Partial<UserProfile>>{r
 export async function saveRemoteProfile(_id:string,updates:Partial<UserProfile>){return (await accountRequest('/profile',updates,'PATCH')).profile;}
 export async function restoreAccount():Promise<AccountUser|null>{try{return (await accountRequest('/auth/me')).user;}catch(e:any){if(e.status===401)return null;throw e;}}
 export async function recoverAccount(handle:string,code:string,password:string){return accountRequest('/auth/recover',{handle,code,password});}
+
+export type InvitePreview={code:string;name:string;inviter:{name:string;avatar:string};players:{name:string;avatar:string;connected:boolean}[];status:'waiting'|'playing'|'full';canJoin:boolean};
+export async function createRoomInvite(code:string):Promise<string>{return (await accountRequest(`/rooms/${code}/invite`,{})).token;}
+export async function getInvitePreview(token:string):Promise<InvitePreview>{return accountRequest(`/invites/${encodeURIComponent(token)}`);}
