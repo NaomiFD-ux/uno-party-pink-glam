@@ -1,0 +1,3 @@
+import {spawn} from 'node:child_process';
+const children=[spawn(process.execPath,['--import','tsx','server/index.ts'],{stdio:'inherit',env:{...process.env,UNO_DEV_AUTH:'1'}}),spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port','3000'],{stdio:'inherit',env:{...process.env,WATCHPACK_POLLING:'true'}})];
+let stopping=false;function stop(code=0){if(stopping)return;stopping=true;children.forEach(c=>c.kill('SIGTERM'));setTimeout(()=>process.exit(code),1000).unref();}children.forEach(c=>c.on('exit',code=>stop(code||0)));process.on('SIGINT',()=>stop());process.on('SIGTERM',()=>stop());

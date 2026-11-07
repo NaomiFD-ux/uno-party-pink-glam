@@ -1,0 +1,50 @@
+{
+  "name": "uno-party",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "next build --webpack",
+    "lint": "tsc --noEmit",
+    "dev:web": "WATCHPACK_POLLING=true next dev --webpack --hostname 127.0.0.1 --port 3000",
+    "server:dev": "UNO_DEV_AUTH=1 tsx server/index.ts",
+    "start": "next start --hostname 0.0.0.0 --port 3000",
+    "server:start": "NODE_ENV=production node dist-game/index.mjs",
+    "test": "node --import tsx --test src/utils/round.test.ts server/*.test.ts",
+    "server:build": "esbuild server/index.ts --bundle --platform=node --target=node24 --packages=external --format=esm --outfile=dist-game/index.mjs",
+    "backup": "node --import tsx scripts/backup.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/canvas-confetti": "^1.9.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "canvas-confetti": "^1.9.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "next": "^16.4.5",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0",
+    "ws": "^8.22.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.28.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": "24.x"
+  }
+}

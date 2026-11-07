@@ -1,0 +1,28 @@
+# Proposed paid game service. Review its current price before creating it.
+# The website is deployed separately to Vercel.
+services:
+  - type: web
+    name: uno-party-game
+    runtime: node
+    plan: 0.5c-512mb
+    region: virginia
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run server:build
+    startCommand: npm run server:start
+    healthCheckPath: /health
+    autoDeployTrigger: "off"
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ROOM_DATABASE_PATH
+        value: /var/data/uno/rooms.sqlite
+      - key: BACKUP_DIRECTORY
+        value: /var/data/uno/backups
+    disk:
+      name: uno-party-data
+      mountPath: /var/data/uno
+      sizeGB: 1

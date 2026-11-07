@@ -1,0 +1,6 @@
+{
+  "name": "Pink Glam Game Night",
+  "description": "An upscale, high-energy digital card game lounge featuring tactile glamour, live multiplayer tables, player profiles, and dazzling celebrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
