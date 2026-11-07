@@ -655,3 +655,7 @@ html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-b
 .player-turn-slot { flex:1; min-width:0; text-align:center; }
 .player-turn-label { display:inline-block; color:#fff; font:800 clamp(10px,2.8vw,14px) var(--font-heading); letter-spacing:.08em; white-space:nowrap; text-shadow:0 0 5px #fff,0 0 13px #ffffffa0,0 0 24px #ffffff60; pointer-events:none; }
 .player-controls > div:last-child { flex-shrink:0; }
+
+@media(max-width:639px) {
+ html.game-viewport-locked .hand-tray > .hand-cards { row-gap:14px; }
+}

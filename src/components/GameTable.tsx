@@ -21,7 +21,7 @@ import {
   VolumeX,
   Flame,
   Settings,
-  Flag,
+  LogOut,
 } from 'lucide-react';
 
 interface GameTableProps {
@@ -235,8 +235,8 @@ export const GameTable: React.FC<GameTableProps> = ({
             onClick={onBackToLobby}
             className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-[#881B4D] font-bold text-xs shadow-xs border border-pink-200 transition-all flex items-center gap-1.5 cursor-pointer"
           >
-            <Flag size={13} />
-            <span className="hidden sm:inline">Leave Table</span>
+            <LogOut size={13} />
+            <span>Exit Game</span>
           </button>
 
           <div className="px-3 py-1 rounded-full bg-white/70 border border-pink-200 text-xs font-semibold text-[#881B4D] flex items-center gap-1.5">
@@ -351,12 +351,11 @@ export const GameTable: React.FC<GameTableProps> = ({
           <div className="flex flex-col items-center">
             <div className={`relative discard-target ${batch.length?'ready-to-play':''}`} role="button" tabIndex={0} aria-label={batch.length?`Play ${batch.length} selected ${batch.length===1?'card':'cards'}`:'Select a card from your hand to play'} aria-disabled={!batch.length||!isHumanTurn} onClick={playSelected} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playSelected();}}}>
               {discardPile.length > 1 && (
-                <CardView
+                <div className="absolute top-0 left-0 opacity-40" aria-hidden="true"><CardView
                   card={discardPile[discardPile.length - 2]}
                   size="md"
                   rotation={-14}
-                  className="absolute top-0 left-0 opacity-40"
-                />
+                /></div>
               )}
               {topCard && (
                 <CardView
