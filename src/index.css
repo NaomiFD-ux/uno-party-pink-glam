@@ -647,3 +647,6 @@ html.game-viewport-locked .game-screen { height:100dvh; min-height:0; overflow:h
 html.game-viewport-locked .game-felt { min-height:0; }
 html.game-viewport-locked .hand-dock { flex-shrink:0; max-height:60dvh; }
 html.game-viewport-locked .hand-tray { min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+
+/* Reserve room inside the hand's scroll area for lifted and rotated cards. */
+html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-bottom:26px; }
