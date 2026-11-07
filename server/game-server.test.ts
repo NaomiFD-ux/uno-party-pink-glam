@@ -35,3 +35,52 @@ test('ten players complete a real shared round; wins sync once and persist into 
  const r=all[0].room!;assert(r.round!.winner,'a valid winner must end the round');assert.equal(Object.values(r.wins).reduce((a,b)=>a+b,0),1);for(const p of all)assert.deepEqual(p.room!.wins,r.wins);
  const previous=r.round!.id;await all[0].send('start');await delay();assert.notEqual(all[0].room!.round!.id,previous);assert.equal(Object.values(all[0].room!.wins).reduce((a,b)=>a+b,0),1);
  }finally{all.forEach(p=>p.ws.terminate());await server.close();}});
+
+test('five online players take normal turns in seat order and every client agrees',async()=>{
+ const {server,url}=await launch();const all:Awaited<ReturnType<typeof player>>[]=[];
+ try{
+  for(let i=0;i<5;i++){
+   const p=await player(url,`Order ${i+1}`);all.push(p);
+   if(i===0)await p.send('create',{name:'Turn order',handSize:7});
+   else await p.send('join',{code:all[0].room!.code});
+   await delay();
+  }
+  for(const p of all){await p.send('ready',{ready:true});await delay();}
+  await all[0].send('start');await delay(3550);
+  const ids=all.map(p=>p.room!.you);
+  for(let turn=0;turn<10;turn++){
+   const actor=all[turn%5],nextId=ids[(turn+1)%5];
+   for(const p of all)assert.equal(p.room!.round!.activeId,ids[turn%5]);
+   await assert.rejects(all[(turn+1)%5].send('move',{move:{type:'draw'}}),/turn/);
+   await actor.send('move',{move:{type:'draw'}});await delay();
+   // A playable drawn card keeps this turn until the player plays or skips.
+   if(actor.room!.round!.drawnCardId){
+    for(const p of all)assert.equal(p.room!.round!.activeId,ids[turn%5]);
+    await actor.send('move',{move:{type:'skip'}});await delay();
+   }
+   for(const p of all)assert.equal(p.room!.round!.activeId,nextId);
+  }
+ }finally{all.forEach(p=>p.ws.terminate());await server.close();}
+});
+
+test('explicit leave frees the seat, transfers host, and keeps the next turn synchronized',async()=>{
+ const {server,url}=await launch();const all:Awaited<ReturnType<typeof player>>[]=[];
+ try{
+  for(let i=0;i<3;i++){
+   const p=await player(url,`Leaving ${i+1}`);all.push(p);
+   if(!i)await p.send('create',{name:'Leave test',handSize:7});else await p.send('join',{code:all[0].room!.code});await delay();
+  }
+  for(const p of all){await p.send('ready',{ready:true});await delay();}
+  await all[0].send('start');await delay(3550);
+  const code=all[0].room!.code,nextId=all[1].room!.you,lastId=all[2].room!.you;
+  await all[0].send('leave');await delay();assert.equal(all[0].room,null);
+  for(const p of all.slice(1)){
+   assert.equal(p.room!.code,code);assert.equal(p.room!.seats.length,2);assert.equal(p.room!.hostId,nextId);
+   assert.equal(p.room!.round!.activeId,nextId);assert.equal(p.room!.round!.players.length,2);
+  }
+  await all[0].send('create',{name:'Another table',handSize:7});await delay();assert.notEqual(all[0].room!.code,code);
+  await all[1].send('leave');await delay();assert.equal(all[1].room,null);
+  assert.equal(all[2].room!.round!.winner,lastId);assert.equal(all[2].room!.wins[lastId],1);
+  await all[2].send('message',{text:'Still here',effect:'normal'});await delay();assert.equal(all[2].room!.wins[lastId],1);
+ }finally{all.forEach(p=>p.ws.terminate());await server.close();}
+});

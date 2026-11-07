@@ -619,9 +619,10 @@ input[type=checkbox] { accent-color:#b10e6b; width:19px; height:19px; flex-shrin
 .skip-turn-button:disabled { opacity:.4; cursor:default; background:#ffffff15; color:#eab8ce; border-color:#f9a8d433; }.human-profile-content .player-uno-badge { margin:0; }
 .hand-dock > .your-turn-label { order:0; text-align:center; color:#fff; font:800 14px var(--font-heading); letter-spacing:.17em; text-shadow:0 0 5px #fff,0 0 13px #ffffffa0,0 0 24px #ffffff60; margin:0 0 -16px; pointer-events:none; z-index:25; }
 .hand-dock > .your-turn-label { position:static; align-self:stretch; text-align:left; padding-left:18px; margin:0 0 6px; flex-shrink:0; }
-.game-screen[data-player-count="5"] .opponent:nth-child(1) { left:9%; right:auto; top:3%; transform:none; }
-.game-screen[data-player-count="5"] .opponent:nth-child(2) { right:9%; left:auto; top:3%; transform:none; }
-.game-screen[data-player-count="5"] .opponent:nth-child(3) { left:0; right:auto; top:42%; transform:none; }
+/* Seat order follows play: you, left, upper-left, upper-right, right. */
+.game-screen[data-player-count="5"] .opponent:nth-child(1) { left:0; right:auto; top:42%; transform:none; }
+.game-screen[data-player-count="5"] .opponent:nth-child(2) { left:9%; right:auto; top:3%; transform:none; }
+.game-screen[data-player-count="5"] .opponent:nth-child(3) { right:9%; left:auto; top:3%; transform:none; }
 .game-screen[data-player-count="5"] .opponent:nth-child(4) { right:0; left:auto; top:42%; transform:none; }
 .game-screen[data-player-count="5"] .opponent:nth-child(3) .bot-chat-bubble { left:0; right:auto; }
 .game-screen[data-player-count="5"] .opponent:nth-child(4) .bot-chat-bubble { left:auto; right:0; }
@@ -659,3 +660,9 @@ html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-b
 @media(max-width:639px) {
  html.game-viewport-locked .hand-tray > .hand-cards { row-gap:14px; }
 }
+
+.exit-match-backdrop { position:fixed; inset:0; z-index:150; display:grid; place-items:center; padding:20px; background:#23021999; }
+.exit-match-dialog { width:min(100%,350px); padding:26px; border-radius:28px; background:#fff8f8; color:#650034; box-shadow:0 12px 40px #23021955; }
+.exit-match-dialog h2 { font:800 22px var(--font-heading); margin:0 0 12px; }
+.exit-match-dialog p { font-size:14px; margin:0 0 22px; }
+.exit-match-dialog > div { display:flex; justify-content:flex-end; gap:12px; }

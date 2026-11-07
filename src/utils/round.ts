@@ -28,3 +28,22 @@ export function moveRound(old:Round,m:Move):Round {
 export function mustTakeDrawStack(r:Round):boolean {
  return !r.winner && r.pending>0 && !r.players[r.active].hand.some(card=>card.value===r.pendingType);
 }
+
+/** Explicitly withdraw a seat; disconnects still preserve the seat for reconnect. */
+export function leaveRound(old:Round,playerId:string):Round {
+ const leaving=old.players.find(p=>p.id===playerId);
+ if(!leaving||old.winner)return old;
+ const activeId=old.players[old.active].id;
+ const players=old.players.filter(p=>p.id!==playerId).map(p=>({...p,hand:[...p.hand]}));
+ let nextId=activeId;
+ if(activeId===playerId&&players.length){
+  const index=(old.active+old.direction+old.players.length)%old.players.length;
+  nextId=old.players[index].id;
+ }
+ return {...old,players,deck:shuffleDeck([...old.deck,...leaving.hand]),discard:[...old.discard],
+  active:Math.max(0,players.findIndex(p=>p.id===nextId)),
+  winner:players.length===1?players[0].id:null,
+  turns:old.turns+(activeId===playerId?1:0),uno:null,
+  ...(activeId===playerId?{pending:0,pendingType:null,drawnCardId:null}:{}),
+ };
+}

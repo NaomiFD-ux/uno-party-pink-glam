@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newRound,moveRound,canPlay,mustTakeDrawStack,Round} from './round';
+import {newRound,moveRound,canPlay,mustTakeDrawStack,leaveRound,Round} from './round';
 import {Card,Player} from '../types/game';
 import {createDeck} from './deck';
 let seq=0;const card=(value:Card['value'],color:Card['color']='red'):Card=>({id:`test-${seq++}`,value,color,score:0});
@@ -46,3 +46,39 @@ test('Skip after a playable draw ends turn without another draw',()=>{const draw
 test('Skip can decline a matching stack and take full penalty',()=>{for(const type of ['draw2','wild4'] as const){const matching=card(type,type==='wild4'?'wild':'red'),r=rig([matching,card('3')],card('5'),type==='draw2'?6:8,type);assert.equal(mustTakeDrawStack(r),false);const n=moveRound(r,{type:'skip'});assert.equal(n.players[0].hand.length,2+r.pending);assert.ok(n.players[0].hand.some(c=>c.id===matching.id));assert.equal(n.pending,0);assert.equal(n.active,1);}});
 test('Skip cannot bypass drawing on a normal fresh turn',()=>{const r=rig([card('3')]);assert.equal(moveRound(r,{type:'skip'}),r);});
 test('five-player rounds deal correctly and conserve the deck',()=>{const seats=players();seats.push({...seats[1],id:'p4',name:'Fifth player'});let r=newRound(seats);assert.equal(r.players.length,5);assert.equal(r.deck.length,72);assert.equal(r.players.flatMap(p=>p.hand).length,35);for(let t=0;t<250&&!r.winner;t++){const options=r.players[r.active].hand.filter(c=>canPlay(r,c));r=options.length?moveRound(r,{type:'play',ids:[options[0].id],color:'red'}):moveRound(r,{type:'draw'});assert.ok(r.active>=0&&r.active<5);const all=[...r.deck,...r.discard,...r.players.flatMap(p=>p.hand)];assert.equal(all.length,108);assert.equal(new Set(all.map(c=>c.id)).size,108);}});
+
+test('five seats follow a full clockwise cycle, reverse back, and skip exactly one seat',()=>{
+ for(const type of ['bot','human'] as const){
+  let r=newRound(Array.from({length:5},(_,i)=>({id:`seat${i}`,name:`Seat ${i}`,avatar:'',title:'',type:i?type:'human' as const,hand:[],hasCalledGlam:false,score:0})));
+  r.color='red';r.discard=[card('0')];
+  r.players.forEach(p=>{p.hand=[card('1'),card('reverse'),card('skip'),card('3')];});
+  for(let seat=0;seat<5;seat++){
+   assert.equal(r.active,seat);
+   r=moveRound(r,{type:'play',ids:[r.players[seat].hand[0].id]});
+  }
+  assert.equal(r.active,0);
+  r=moveRound(r,{type:'play',ids:[r.players[0].hand.find(c=>c.value==='reverse')!.id]});
+  assert.equal(r.direction,-1);assert.equal(r.active,4);
+  r=moveRound(r,{type:'play',ids:[r.players[4].hand.find(c=>c.value==='skip')!.id]});
+  assert.equal(r.active,2);
+  r=moveRound(r,{type:'play',ids:[r.players[2].hand.find(c=>c.value==='3')!.id]});
+  assert.equal(r.active,1);
+ }
+});
+
+test('leaving preserves cards and chooses the next surviving seat in either direction',()=>{
+ for(const direction of [1,-1] as const)for(let active=0;active<5;active++)for(let leaving=0;leaving<5;leaving++){
+  const seats=Array.from({length:5},(_,i)=>({...players()[0],id:`leave${i}`}));
+  const before={...newRound(seats),active,direction};
+  const expected=before.players[leaving===active?(active+direction+5)%5:active].id;
+  const after=leaveRound(before,before.players[leaving].id);
+  assert.equal(after.players.length,4);assert.equal(after.players[after.active].id,expected);
+  assert.equal(after.deck.length+after.discard.length+after.players.reduce((n,p)=>n+p.hand.length,0),108);
+  assert.equal(before.players.length,5);
+ }
+});
+test('leaving cancels the departing active player penalty and the final remaining player wins',()=>{
+ const before=newRound(players().slice(0,2));before.pending=4;before.pendingType='wild4';before.drawnCardId=before.players[0].hand[0].id;
+ const after=leaveRound(before,before.players[0].id);
+ assert.equal(after.winner,before.players[1].id);assert.equal(after.pending,0);assert.equal(after.pendingType,null);assert.equal(after.drawnCardId,null);
+});

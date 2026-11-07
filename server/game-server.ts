@@ -3,7 +3,7 @@ import {randomBytes,randomInt,createHash,randomUUID} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createAccounts} from './accounts';
 import {Store} from './store';
-import {newRound,moveRound,mustTakeDrawStack,type Round,type Move} from '../src/utils/round';
+import {newRound,moveRound,mustTakeDrawStack,leaveRound,type Round,type Move} from '../src/utils/round';
 import type {RoomView,RoomMessage} from '../src/online/protocol';
 
 type User={id:string;name:string;avatar:string};
@@ -72,8 +72,20 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       if(m.type==='play'&&(!Array.isArray(m.ids)||m.ids.length>108||m.ids.some((id:unknown)=>typeof id!=='string')||(m.color!==undefined&&!['red','blue','green','yellow'].includes(m.color))))throw Error('Invalid cards or color.');
       apply(r,user.id,m);
      }else if(input.type==='leave'){
-      if(r.round&&!r.round.winner)throw Error('Your seat is saved during this round. You can close the page and return.');
-      r.seats=r.seats.filter(s=>s.id!==user!.id);if(r.hostId===user.id)r.hostId=r.seats[0]?.id||'';r.round=null;clearTimeout(timers.get(r.code));for(const [socket,id]of users)if(id.id===user.id){members.delete(socket);send(socket,{type:'room',room:null});}commit(r);
+      const participants=[...r.seats];let result:any;
+      if(r.round&&!r.round.winner){
+       r.round=leaveRound(r.round,user.id);
+       r.event={id:randomUUID(),actorId:user.id,kind:'leave'};
+       if(r.round.winner){
+        const winner=r.round.winner;r.wins[winner]=(r.wins[winner]||0)+1;
+        result={id:r.roundId,room_code:r.code,table_name:r.name,winner_id:winner,finished_at:new Date().toISOString(),players:participants.map(p=>({user_id:p.id,cards_played:r.played[p.id]||0,turns:r.round!.turns}))};
+       }
+      }else r.round=null;
+      r.seats=r.seats.filter(s=>s.id!==user!.id);if(r.hostId===user.id)r.hostId=r.seats[0]?.id||'';
+      if(!r.seats.length)r.round=null;
+      for(const [socket,id]of users)if(id.id===user.id){members.delete(socket);send(socket,{type:'room',room:null});}
+      commit(r,result);schedule(r);
+      if(result)for(const [ws,u]of users)if(participants.some(p=>p.id===u.id))send(ws,{type:'profile-updated'});
      }else throw Error('Unknown request.');
     }
    }

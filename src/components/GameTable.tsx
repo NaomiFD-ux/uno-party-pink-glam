@@ -59,6 +59,15 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [sessionWins,setSessionWins]=useState<Record<string,number>>({});
   const [isMuted,setIsMuted]=useState(soundFX.getMuted());
   const [showChatMenu,setShowChatMenu]=useState(false);
+  const [showExit,setShowExit]=useState(false);
+  const [leaving,setLeaving]=useState(false);
+  const [leaveError,setLeaveError]=useState('');
+  const leaveMatch=async()=>{
+    setLeaving(true);setLeaveError('');
+    try{if(online)await online.send('leave');else onBackToLobby();}
+    catch(error){setLeaveError((error as Error).message);}
+    finally{setLeaving(false);}
+  };
   const [reaction,setReaction]=useState('');
   const [chatDraft,setChatDraft]=useState('');
   const [reactionVersion,setReactionVersion]=useState(0);
@@ -139,7 +148,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const lastOnlineEvent=useRef(online?.room.event?.id),lastOnlineRound=useRef(online?.room.round?.id),lastOnlineMessage=useRef<string|null>(null);
   useEffect(()=>{if(!online)return;const next=viewRound(online.room);setSessionWins(Object.fromEntries(Object.entries(online.room.wins).map(([id,n])=>[mapId(id),n])));
     if(lastOnlineRound.current!==online.room.round!.id){lastOnlineRound.current=online.room.round!.id;lastOnlineEvent.current=online.room.event?.id;flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);setPhase('shuffle');setBatch([]);setPendingWildCard(null);liveRound.current=next;setRound(next);return;}
-    const event=online.room.event;if(event&&event.id!==lastOnlineEvent.current){lastOnlineEvent.current=event.id;animateTransition(liveRound.current,next,event.kind==='play'?{type:'play',ids:[]}:{type:'draw'});}else{liveRound.current=next;setRound(next);}
+    const event=online.room.event;if(event&&event.id!==lastOnlineEvent.current){lastOnlineEvent.current=event.id;if(event.kind==='leave'){liveRound.current=next;setRound(next);setBatch([]);setPendingWildCard(null);}else animateTransition(liveRound.current,next,event.kind==='play'?{type:'play',ids:[]}:{type:'draw'});}else{liveRound.current=next;setRound(next);}
     if(next.active!==0)setPendingWildCard(null);
   },[online?.room]);
   useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
@@ -228,11 +237,12 @@ export const GameTable: React.FC<GameTableProps> = ({
   return (
     <div ref={rootRef} data-player-count={players.length} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
       {phase !== 'playing' && <div className={`deal-overlay ${phase}`} role="status" aria-live="polite"><div className="shuffle-stack"><i/><i/><i/><b>UNO</b></div>{phase === 'deal' && Array.from({length:settings.initialHandSize * players.length},(_,i)=><span key={i} className="flying-card" style={{left:dealPaths[dealSeatIds[i%players.length]]?.x,top:dealPaths[dealSeatIds[i%players.length]]?.y,'--deal-x':`${dealPaths[dealSeatIds[i%players.length]]?.dx||0}px`,'--deal-y':`${dealPaths[dealSeatIds[i%players.length]]?.dy||0}px`,animationDelay:`${i*Math.min(65,1900/Math.max(1,settings.initialHandSize*players.length-1))}ms`} as React.CSSProperties}>UNO</span>)}<h2>{phase === 'shuffle' ? 'A little shuffle ✦' : 'Your cards are on their way…'}</h2><p>{phase === 'shuffle' ? 'Fresh deck. Fresh possibilities.' : `${settings.initialHandSize} cards each. Let’s play.`}</p></div>}
+      {showExit&&<div className="exit-match-backdrop"><section className="exit-match-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-match-title"><h2 id="exit-match-title">Leave this match?</h2><p>Your current hand will be forfeited.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div><button type="button" className="uno-secondary" disabled={leaving} onClick={()=>setShowExit(false)}>Stay</button><button type="button" className="uno-primary" disabled={leaving} onClick={()=>void leaveMatch()}>{leaving?'Leaving…':'Leave Match'}</button></div></section></div>}
       {/* Top Table Control Bar */}
       <div className="flex items-center justify-between gap-2 max-w-4xl mx-auto w-full z-20 mb-1">
         <div className="flex items-center gap-2">
           <button
-            onClick={onBackToLobby}
+            onClick={()=>{setLeaveError('');setShowExit(true);}}
             className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-[#881B4D] font-bold text-xs shadow-xs border border-pink-200 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <LogOut size={13} />
@@ -288,7 +298,7 @@ export const GameTable: React.FC<GameTableProps> = ({
             .map((bot, index) => {
               const isThisBotTurn = players[activePlayerIndex]?.id === bot.id;
               return (
-                <div key={bot.id} data-player-id={bot.id} style={players.length>5?{position:'absolute',left:`${index%2===0?4:74}%`,top:`${4+Math.floor(index/2)*(68/Math.ceil((players.length-1)/2))}%`}:undefined} className="opponent relative flex flex-col items-center">
+                <div key={bot.id} data-player-id={bot.id} style={players.length>5?{position:'absolute',left:`${index<Math.ceil((players.length-1)/2)?4:74}%`,top:`${4+(index<Math.ceil((players.length-1)/2)?Math.ceil((players.length-1)/2)-1-index:index-Math.ceil((players.length-1)/2))*(68/Math.ceil((players.length-1)/2))}%`}:undefined} className="opponent relative flex flex-col items-center">
                   {botMessage?.senderId===bot.id&&<div className={`bot-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId===bot.id?'slam-message':''}`} role="status" aria-label={`${bot.name}: ${botMessage.text}`}>{botMessage.text}</div>}
 
                   <span className="game-player-name">{bot.name}</span>
