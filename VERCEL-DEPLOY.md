@@ -2,7 +2,7 @@
 
 Website: https://uno-party-pink-glam.vercel.app
 
-Phone frame on a computer: https://uno-party-pink-glam.vercel.app/phone.html
+The old /phone.html preview link redirects to the full-screen website, preserving invite query parameters.
 
 Game server: https://uno-party-game.onrender.com
 

@@ -13,9 +13,9 @@ npm run dev
 
 Website: http://127.0.0.1:3000/
 
-Phone frame: http://127.0.0.1:3000/phone.html
+Full-screen mobile website: http://127.0.0.1:3000/ (the old /phone.html link redirects here).
 
-The command starts both the website on port 3000 and the game service on 3030. Stop with Ctrl+C. The phone frame is for this computer; localhost on an iPhone refers to the iPhone itself.
+The command starts both the website on port 3000 and the game service on 3030. Stop with Ctrl+C. The website responds to the device width without a simulated phone frame. Localhost on an iPhone refers to the iPhone itself.
 
 Create an account using the pink signup page, choose a picture, and save the recovery code. Login accepts email or username. Old browser-only preview accounts are not server accounts: create a new one. Existing preview passwords are not uploaded or migrated. Guests can use the bot practice mode; an account is required to play with friends.
 

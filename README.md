@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Phone preview: http://127.0.0.1:3000/phone.html
+Full-screen mobile/desktop website: http://127.0.0.1:3000/
 
 Full website: http://127.0.0.1:3000/
 

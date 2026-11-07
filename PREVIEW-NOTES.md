@@ -1,6 +1,6 @@
 # UNO Party preview
 
-Run `npm run dev` with Node.js 24. Phone: http://127.0.0.1:3000/phone.html . Full website: http://127.0.0.1:3000/ .
+Run `npm run dev` with Node.js 24. Full-screen website: http://127.0.0.1:3000/ .
 
 Accounts, photos, live rooms, hands, round wins, and multiplayer history now save on our own game server. No Supabase account or key is needed. Create a new account using the signup page; save its recovery code. Old browser-only preview accounts do not migrate automatically.
 
