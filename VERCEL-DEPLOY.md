@@ -29,3 +29,7 @@ References:
 - https://render.com/pricing
 
 Current reviewed base estimate: $7/month for the 512 MB service plus $0.25/month for a 1 GB disk = $7.25/month, before taxes and additional usage. Render Hobby workspace is $0/month plus compute. Do not enable a paid workspace or extra resources. The user approved approximately $7.25/month for the server and disk. Render account sign-in is still required. No service has been purchased or provisioned.
+
+## Latest handoff
+
+Private source repository: https://github.com/TaNeekwa/uno-party-pink-glam . The production website build passes with Webpack. The user completed the Render GitHub authorization/account signup steps; Render is awaiting email verification. No Render service, disk, or Vercel deployment has been created yet. Continue after verification, keeping the approved $7.25/month base server/disk budget.
