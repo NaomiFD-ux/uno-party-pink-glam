@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Player } from '../types/game';
-import { Trophy, Award, ArrowRight, RotateCcw } from 'lucide-react';
+import { Trophy, Award, ArrowRight, RotateCcw, UserPlus } from 'lucide-react';
 import { soundFX } from '../utils/audio';
 
 interface VictoryModalProps {
@@ -12,6 +12,7 @@ interface VictoryModalProps {
   players: Player[];
   humanPlayerId: string;
   sessionWins: Record<string,number>;
+  onInvitePlayers?:()=>Promise<void>;
   onPlayAgain: () => void;
   onGoToLobby: () => void;
 }
@@ -24,9 +25,11 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   players,
   humanPlayerId,
   sessionWins,
+  onInvitePlayers,
   onPlayAgain,
   onGoToLobby,
 }) => {
+  const [inviting,setInviting]=useState(false),[inviteError,setInviteError]=useState('');
   const isHumanWinner = winner.id === humanPlayerId;
 
   useEffect(() => {
@@ -146,10 +149,12 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         </div>
 
         <p className="session-score-note">Totals since this table started · kept for the next round</p>
+        {onInvitePlayers&&<button type="button" className="invite-next-round" disabled={inviting} onClick={async()=>{setInviting(true);setInviteError('');try{await onInvitePlayers();}catch(e){setInviteError((e as Error).message);}finally{setInviting(false);}}}><UserPlus size={17}/>{inviting?'Opening table…':'Invite Players'}</button>}
+        {inviteError&&<p className="form-error" role="alert">{inviteError}</p>}
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-3">
           <button
-            disabled={playAgainDisabled}
+            disabled={playAgainDisabled||inviting}
             onClick={onPlayAgain}
             className="btn-glam-primary py-3 px-4 rounded-full text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer"
           >

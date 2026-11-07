@@ -67,3 +67,8 @@ Still needs hosted verification: real iPhones on different networks, backgroundi
 ## Publication choice
 
 The user chose Vercel for the website and retained the tested server on a separate host. Vercel configuration is prepared and the Render persistent-disk game service has been deployed. Both hosts are connected and the live two-player checks passed. See VERCEL-DEPLOY.md for the publication sequence and proposed recurring cost.
+
+
+After a completed round, the host can choose **Invite Players** to reopen the same room. Existing round-win totals remain saved; newcomers join at zero wins, everyone readies up, and the host starts the next deal. The room code and saved personal invitation links stay the same.
+
+Settings includes **Change Profile Picture**. Uploads are cropped to a square and resized to 256×256 JPEG before saving to the account; the updated photo is broadcast to the room and appears in invitation previews.

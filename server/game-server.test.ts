@@ -33,7 +33,20 @@ test('ten players complete a real shared round; wins sync once and persist into 
   const card=legal[0];if(card)await active.send('move',{move:{type:'play',ids:[card.id,...(!r.drawnCardId&&/^\d$/.test(card.value)?r.hand.filter(c=>c.id!==card.id&&c.value===card.value).map(c=>c.id):[])],color:'red'}});else await active.send('move',{move:{type:'draw'}});await delay(35);
  }
  const r=all[0].room!;assert(r.round!.winner,'a valid winner must end the round');assert.equal(Object.values(r.wins).reduce((a,b)=>a+b,0),1);for(const p of all)assert.deepEqual(p.room!.wins,r.wins);
- const previous=r.round!.id;await all[0].send('start');await delay();assert.notEqual(all[0].room!.round!.id,previous);assert.equal(Object.values(all[0].room!.wins).reduce((a,b)=>a+b,0),1);
+ const previous=r.round!.id,scores=structuredClone(r.wins);
+ await assert.rejects(all[1].send('open-seats'),/host/);
+ await all[0].send('open-seats');await delay();
+ for(const p of all){assert.equal(p.room!.round,null);assert.deepEqual(p.room!.wins,scores);assert(p.room!.seats.every(s=>!s.ready));}
+ await all[9].send('leave');await delay();
+ const newcomer=await player(url,'New next-round player');all.push(newcomer);
+ await newcomer.send('join',{code:r.code});await delay();
+ assert.equal(all[0].room!.seats.length,10);assert.equal(newcomer.room!.wins[newcomer.room!.you]||0,0);
+ assert.deepEqual(newcomer.room!.wins,scores);
+ const seated=all.filter(p=>p.room?.code===r.code);
+ for(const p of seated){await p.send('ready',{ready:true});await delay();}
+ await all[0].send('start');await delay();assert.notEqual(all[0].room!.round!.id,previous);assert.equal(Object.values(all[0].room!.wins).reduce((a,b)=>a+b,0),1);
+ assert.equal(newcomer.room!.round!.hand.length,7);assert(newcomer.room!.round!.players.some(p=>p.id===newcomer.room!.you));
+ await assert.rejects(all[0].send('open-seats'),/Finish/);
  }finally{all.forEach(p=>p.ws.terminate());await server.close();}});
 
 test('five online players take normal turns in seat order and every client agrees',async()=>{

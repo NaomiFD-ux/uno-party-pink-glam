@@ -699,3 +699,19 @@ html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-b
 .invitation-dismiss { display:inline-flex; margin:18px auto 0; color:#9b5479; font-size:12px; }
 .invitation-status,.invitation-error p { font-size:13px; line-height:1.5; color:#9b5479; margin-bottom:18px; }
 .invitation-error { margin-top:18px; }
+
+.invite-next-round { width:100%; display:flex; justify-content:center; align-items:center; gap:8px; padding:12px 16px; margin:0 0 14px; border:1px solid #f3b2d1; border-radius:999px; background:#fff0f5; color:#b10e6b; font:700 14px var(--font-heading); cursor:pointer; }
+.waiting-scoreboard { margin:22px 0; }
+.waiting-scoreboard h2 { font:700 16px var(--font-heading); color:#650034; margin:0 0 12px; }
+.waiting-scoreboard > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:10px; }
+.waiting-scoreboard article { display:flex; align-items:center; gap:8px; padding:10px 12px; background:white; border-radius:18px; border:1px solid #ffe1ec; color:#650034; font-size:12px; }
+.waiting-scoreboard img { width:30px; height:30px; border-radius:50%; object-fit:cover; }
+.waiting-scoreboard span { min-width:0; flex:1; overflow-wrap:anywhere; }
+.waiting-scoreboard strong { color:#b10e6b; white-space:nowrap; }
+
+.settings-photo { display:flex; align-items:center; gap:17px; padding:8px 0 22px; margin-bottom:8px; border-bottom:1px solid #ffe1ec; }
+.settings-photo > img { width:70px; height:70px; flex-shrink:0; border-radius:50%; border:3px solid #ffd1e4; object-fit:cover; }
+.settings-photo > div { min-width:0; }
+.settings-photo strong { display:block; font:700 15px var(--font-heading); color:#650034; overflow-wrap:anywhere; margin-bottom:9px; }
+.settings-photo button { padding:0; text-align:left; font-size:12px; }
+.settings-photo p { font-size:12px; color:#9b5479; margin:9px 0 0; }

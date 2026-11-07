@@ -475,6 +475,7 @@ export const GameTable: React.FC<GameTableProps> = ({
           sessionWins={sessionWins}
           playAgainDisabled={!!online&&online.room.hostId!==online.room.you}
           playAgainLabel={online&&online.room.hostId!==online.room.you?'Wait for host':'Play Again'}
+          onInvitePlayers={online&&online.room.hostId===online.room.you?()=>online.send('open-seats'):undefined}
           onPlayAgain={startNewGame}
           onGoToLobby={onBackToLobby}
         />

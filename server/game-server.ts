@@ -85,6 +85,12 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     }else{
      if(input.revision!==r.revision)throw Error('The table changed. Try again.');
      if(input.type==='ready'){if(r.round)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
+     else if(input.type==='open-seats'){
+      if(r.hostId!==user.id)throw Error('Only the host can invite players between rounds.');
+      if(!r.round?.winner)throw Error('Finish the current round before adding players.');
+      r.round=null;r.event=null;r.message=null;r.seats=r.seats.map(seat=>({...seat,ready:false}));
+      clearTimeout(timers.get(r.code));timers.delete(r.code);commit(r);
+     }
      else if(input.type==='start'){
       if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
       r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize);r.roundId=randomUUID();r.startedAt=Date.now();r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);

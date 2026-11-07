@@ -57,6 +57,11 @@ test('personal room invitations survive login and restart and expose only the in
   assert.equal(publicPreview.response.status,200);assert.equal(publicPreview.data.code,code);assert.equal(publicPreview.data.inviter.name,'Inviter');
   assert.equal(publicPreview.data.name,'Exact Pink Table');assert.equal(publicPreview.data.canJoin,true);
   assert(!/email|password|hand|recovery|session/i.test(JSON.stringify(publicPreview.data)));
+  assert.equal((await a.request('/profile',{avatar:'data:image/jpeg;base64,/9j/AA=='},'PATCH')).response.status,200);await delay();
+  const changedPhoto=(await client(url).request(`/invites/${token}`)).data.inviter.avatar;
+  assert.match(changedPhoto,/^\/api\/game\/avatar\//);assert.equal(host.room.seats[0].avatar,changedPhoto);
+  const photo=await fetch(url+changedPhoto.replace('/api/game',''));assert.equal(photo.status,200);assert.equal(photo.headers.get('content-type'),'image/jpeg');
+
   assert.equal((await b.request('/auth/login',{handle:'Friend',password,remember:true})).response.status,200);
   friend=await socket(url,(await b.request('/auth/ticket',{})).data.ticket);
   await friend.send('join',{code:publicPreview.data.code});await delay();assert.equal(friend.room.code,code);
