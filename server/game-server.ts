@@ -75,7 +75,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       const participants=[...r.seats];let result:any;
       if(r.round&&!r.round.winner){
        r.round=leaveRound(r.round,user.id);
-       r.event={id:randomUUID(),actorId:user.id,kind:'leave'};
+       r.event=null;
        if(r.round.winner){
         const winner=r.round.winner;r.wins[winner]=(r.wins[winner]||0)+1;
         result={id:r.roundId,room_code:r.code,table_name:r.name,winner_id:winner,finished_at:new Date().toISOString(),players:participants.map(p=>({user_id:p.id,cards_played:r.played[p.id]||0,turns:r.round!.turns}))};
