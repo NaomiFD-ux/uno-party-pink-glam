@@ -43,7 +43,7 @@ For a hosted server, schedule this command or a host snapshot job and retain cop
 
 ## Publish
 
-No external hosting has been created or charged. The remaining work is selecting and connecting a host, then testing real iPhones remotely.
+The Render game server is now live with the user-approved $7.25/month base server + disk setup. Vercel website publication is waiting for its email verification. See VERCEL-DEPLOY.md for the current status and exact addresses; real-iPhone verification remains.
 
 Website: deploy the Next.js source to Vercel. Set `NEXT_PUBLIC_GAME_SERVER_URL` to the service's `wss://` URL and `GAME_SERVER_HTTP_URL` to its `https://` URL **before building**. Build with `npm run build`. Website requests to `/api/game/...` are proxied to the game service so account cookies remain on the website's origin. Rebuild when those addresses change.
 
@@ -66,4 +66,4 @@ Still needs hosted verification: real iPhones on different networks, backgroundi
 
 ## Publication choice
 
-The user chose Vercel for the website and retained the tested server on a separate host. Vercel configuration and a proposed Render persistent-disk service are prepared. No deployment has been created. See VERCEL-DEPLOY.md for the publication sequence and proposed recurring cost.
+The user chose Vercel for the website and retained the tested server on a separate host. Vercel configuration is prepared and the Render persistent-disk game service has been deployed. The Vercel website still needs its email verification completed. See VERCEL-DEPLOY.md for the publication sequence and proposed recurring cost.

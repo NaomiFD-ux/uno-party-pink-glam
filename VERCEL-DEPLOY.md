@@ -1,35 +1,46 @@
-# Proposed publication: Vercel website + separate saved-game server
+# UNO Party hosting status
 
-The Vercel account is accessible in the browser. The user chose to retain the tested game server on a separate host, instead of rewriting saved storage for Vercel Functions.
+## Game server: live
 
-Prepared, not deployed:
+- Service: https://uno-party-game.onrender.com
+- Health: https://uno-party-game.onrender.com/health — checked successfully, account authentication enabled.
+- Render dashboard: https://dashboard.render.com/web/srv-dbnamqs9v7es73c7vu60
+- Service ID: srv-dbnamqs9v7es73c7vu60
+- Instance: 0.5c-512mb ($7/month base), Virginia.
+- Persistent disk: 1 GB ($0.25/month base), mounted at /var/data/uno. Size/path verified in Render.
+- The user approved this approximately $7.25/month base cost, then completed the card step. Paid service is now running; taxes and extra usage can apply.
+- Build: npm ci --include=dev && npm run server:build
+- Start: npm run server:start
+- Health path: /health. Auto-deploy: Off. One instance.
+- Environment: NODE_ENV=production; NODE_VERSION=24; PORT=10000; ROOM_DATABASE_PATH=/var/data/uno/rooms.sqlite; BACKUP_DIRECTORY=/var/data/uno/backups; ALLOWED_ORIGINS=https://uno-party-pink-glam.vercel.app.
 
-- `vercel.json`: Next.js build and install settings.
-- `.vercelignore`: excludes private environment files, runtime accounts, saved games, backups, dependencies and build output.
-- Node.js 24 selected in package.json.
-- `render.yaml`: proposed single-instance Render 0.5c-512mb game service with a 1 GB persistent disk. This is a paid service; review current pricing and approve the recurring cost before creating it. Nothing has been purchased or provisioned.
+The live backend passed a two-player check with disposable test accounts: account sessions, a shared room/code, readiness, dealing, private hands, live turns, shared chat/effect event, reconnecting to the same hand/seat, and a completed round with shared wins and saved history. Test sessions were logged out and the test room was left. No real user account or password was used.
 
-Render is a proposed host, not an existing deployment. Its service should own `/var/data/uno`, and the database path must remain under that disk. No development database or test accounts should be uploaded there.
+## Website: project created, first production deployment pending
 
-Publication order:
+Vercel import form is open in the in-app browser, tab 5 (New Project – Vercel), for:
 
-1. Confirm the game-server host and its budget. If using Render, connect the sanitized source and review the 0.5c-512mb service + persistent disk before creation.
-2. Choose/reserve the Vercel website's production origin. Enter that exact HTTPS origin in the game service's ALLOWED_ORIGINS.
-3. Deploy the server and verify its HTTPS `/health` URL.
-4. In the Vercel project, set GAME_SERVER_HTTP_URL to that HTTPS service origin and NEXT_PUBLIC_GAME_SERVER_URL to its WSS origin. Then deploy the website. These values must be set before the website build; do not deploy with localhost addresses.
-5. Verify sign-up/login, photos, two different players, invite links, live turns/chat, saved results, and returning after refresh or losing signal on actual iPhones.
+- Team: Naomi Donley’s projects (Hobby).
+- Project name: uno-party-pink-glam.
+- Private source: https://github.com/TaNeekwa/uno-party-pink-glam .
+- Framework: Next.js, settings from vercel.json, production build passed locally.
+- GAME_SERVER_HTTP_URL=https://uno-party-game.onrender.com (Production + Preview).
+- NEXT_PUBLIC_GAME_SERVER_URL=wss://uno-party-game.onrender.com (Production + Preview; public value).
 
-Vercel now supports WebSocket connections, but Functions do not provide permanent local SQLite storage or shared in-memory rooms across instances. Retaining the separate server preserves our tested architecture.
+Deploy was clicked, but Vercel requires a six-digit email security code. The code was sent, and the user was asked to enter it in the Verify Your Identity dialog. Do not resend needlessly or cancel/reload the prepared form. No successful Vercel deployment or public website URL has been confirmed yet; the intended https://uno-party-pink-glam.vercel.app returned 404 before verification.
 
-References:
+After verification:
 
-- https://vercel.com/docs/functions/websockets
-- https://vercel.com/kb/guide/is-sqlite-supported-in-vercel
-- https://render.com/docs/disks
-- https://render.com/pricing
+1. Follow this existing deployment; do not create a duplicate project.
+2. Verify the actual production website domain. If it differs from the intended domain, update Render ALLOWED_ORIGINS to the exact HTTPS origin and deploy the environment change.
+3. Confirm website and account proxy routes respond, secure session cookies work through the website, and the built client uses the Render WSS address.
+4. Run the hosted verification through the website proxy (not only directly against the backend), then inspect the actual phone UI. Work verification script is in the parent workspace’s work/verify-hosted.mjs; it uses disposable credentials kept only in memory and does not print them.
+5. Verify the game on actual iPhones, including backgrounding and return. Do not claim this device check has already happened.
 
-Current reviewed base estimate: $7/month for the 512 MB service plus $0.25/month for a 1 GB disk = $7.25/month, before taxes and additional usage. Render Hobby workspace is $0/month plus compute. Do not enable a paid workspace or extra resources. The user approved approximately $7.25/month for the server and disk. Render account sign-in is still required. No service has been purchased or provisioned.
+No development runtime database, backups or test credentials were uploaded. Saved production data is on Render’s attached disk. Source repository is private. The current deployed source commit is 878f9a7dc699bd0bc7b70bdb25807f2b2375edd1; local hosting documentation may be newer.
 
-## Latest handoff
+Manual consistent backups are available with npm run backup; no recurring backup job has been configured. Keep the database under the disk path and use one server instance. Vercel’s website does not store local SQLite data.
 
-Private source repository: https://github.com/TaNeekwa/uno-party-pink-glam . The production website build passes with Webpack. The user completed the Render GitHub authorization/account signup steps; Render is awaiting email verification. No Render service, disk, or Vercel deployment has been created yet. Continue after verification, keeping the approved $7.25/month base server/disk budget.
+## Existing Vercel project recovered
+
+The verification dialog is no longer visible. Retrying the import reported that uno-party-pink-glam already exists. Its existing project is at https://vercel.com/naomi-donleys-projects/uno-party-pink-glam and is linked to this GitHub repository, but currently shows No Production Deployment. Continue in this project; do not create or rename another. A push to main is being used to trigger its first production deployment. Confirm the environment settings and actual public site before calling publication successful.
