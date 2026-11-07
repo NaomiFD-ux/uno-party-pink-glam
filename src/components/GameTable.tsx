@@ -321,7 +321,6 @@ export const GameTable: React.FC<GameTableProps> = ({
 
         {/* CENTER TABLE FELT: Draw Pile, Discard Pile, Active Color Gem */}
         <div className="table-piles relative flex items-center justify-center gap-4 sm:gap-8 my-auto z-10">
-          {isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<div className="your-turn-label pile-turn-label" role="status" aria-live="polite">YOUR TURN</div>}
           {/* Active color ambient ring */}
           <div
             className={`absolute -inset-8 rounded-full blur-2xl opacity-40 transition-colors duration-500 pointer-events-none ${
@@ -380,13 +379,14 @@ export const GameTable: React.FC<GameTableProps> = ({
       {/* BOTTOM HUMAN PLAYER CONTROLS & DOCK */}
       <div className="hand-dock relative max-w-4xl mx-auto w-full z-20 mt-2">
         {/* Action pills row: Human status, GLAM Button, Chat */}
-        <div className="flex items-center justify-between gap-2 mb-2 px-1">
+        <div className="player-controls flex items-center justify-between gap-2 mb-2 px-1">
           <div data-player-id="player_human" className="human-game-profile">
             {reaction&&<div className={`profile-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId==='player_human'?'slam-message':''} ${/^\p{Extended_Pictographic}$/u.test(reaction)?'emoji-bubble':''}`} role="status" aria-live="polite" aria-label={`${userName}: ${reaction}`}>{reaction}</div>}
             <span className="game-player-name">{userName} <small>(You)</small></span>
             <div className="human-profile-content"><img src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
           </div>
 
+          <div className="player-turn-slot">{isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<span className="player-turn-label" role="status" aria-live="polite">YOUR TURN</span>}</div>
           {/* Quick Reaction & GLAM Shouting */}
           <div className="flex items-center gap-2">
             {/* Quick chat toggle */}

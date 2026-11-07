@@ -650,3 +650,8 @@ html.game-viewport-locked .hand-tray { min-height:0; overflow-y:auto; overscroll
 
 /* Reserve room inside the hand's scroll area for lifted and rotated cards. */
 html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-bottom:26px; }
+
+.player-controls .human-game-profile { flex:0 1 auto; max-width:38%; }
+.player-turn-slot { flex:1; min-width:0; text-align:center; }
+.player-turn-label { display:inline-block; color:#fff; font:800 clamp(10px,2.8vw,14px) var(--font-heading); letter-spacing:.08em; white-space:nowrap; text-shadow:0 0 5px #fff,0 0 13px #ffffffa0,0 0 24px #ffffff60; pointer-events:none; }
+.player-controls > div:last-child { flex-shrink:0; }
