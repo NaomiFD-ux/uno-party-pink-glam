@@ -6,4 +6,4 @@ Accounts, photos, live rooms, hands, round wins, and multiplayer history now sav
 
 Create Room → Friends uses shared codes/links. Practice keeps four bots. For a second independent account locally, open http://localhost:3000/phone.html . The two origins maintain separate sign-ins.
 
-See ONLINE-SETUP.md for publishing, backups, security details, limitations, and remaining iPhone/hosting verification. The Render game service is live; the Vercel website is awaiting email verification. See VERCEL-DEPLOY.md for current publication status.
+See ONLINE-SETUP.md for publishing, backups, security details, limitations, and remaining iPhone/hosting verification. The live website is https://uno-party-pink-glam.vercel.app and the Render game service is connected. See VERCEL-DEPLOY.md for current publication status.

@@ -20,7 +20,7 @@ Recovered from the user's messages in “UNO Website Features” (6aedfa4b-86e4-
 
 ## Implementation status
 
-The engine has been updated for the house rules above, with automated tests. Manual UNO penalties and forced timeouts are removed. The local game and How to play use matching-type draw stacks and same-number batches. Normal draw takes one card; a playable drawn card can be played immediately, per the later request. A separate authoritative WebSocket server now runs shared rooms locally for 2–10 people; server-saved accounts, photos, wins and history are implemented without Supabase. Public hosting and real-iPhone verification remain.
+The engine has been updated for the house rules above, with automated tests. Manual UNO penalties and forced timeouts are removed. The local game and How to play use matching-type draw stacks and same-number batches. Normal draw takes one card; a playable drawn card can be played immediately, per the later request. A separate authoritative WebSocket server now runs shared rooms locally for 2–10 people; server-saved accounts, photos, wins and history are implemented without Supabase. The Vercel website and Render server are now published and passed live two-player checks. Real-iPhone verification remains.
 
 ## Agreed setup recovered from the pasted prior reply
 
