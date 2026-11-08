@@ -28,7 +28,7 @@ test('ten players complete a real shared round; wins sync once and persist into 
  const outsider=await player(url,'Late arrival');await assert.rejects(outsider.send('join',{code:all[0].room!.code}),/started/);outsider.ws.terminate();
  for(let turn=0;turn<3000&&!all[0].room!.round!.winner;turn++){
   const active=all.find(p=>p.room!.you===all[0].room!.round!.activeId)!,r=active.room!.round!,top=r.discard.at(-1)!;
-  const legal=r.hand.filter(c=>(!r.drawnCardId||c.id===r.drawnCardId)&&(r.pending?c.value===r.pendingType:c.color==='wild'||c.color===r.color||c.value===top.value));
+  const legal=r.hand.filter(c=>(r.pending?c.value===r.pendingType:c.color==='wild'||c.color===r.color||c.value===top.value));
   if(r.pending&&!legal.length){await delay(470);continue;}
   const card=legal[0];if(card)await active.send('move',{move:{type:'play',ids:[card.id,...(!r.drawnCardId&&/^\d$/.test(card.value)?r.hand.filter(c=>c.id!==card.id&&c.value===card.value).map(c=>c.id):[])],color:'red'}});else await active.send('move',{move:{type:'draw'}});await delay(35);
  }
@@ -109,4 +109,23 @@ test('the server shares a turn deadline and plays automatically when it expires'
   await delay(3720);assert(a.room!.round!.turns>0,'the first expired turn must resolve automatically');assert.equal(a.room!.round!.turns,b.room!.round!.turns);
   assert.equal(a.room!.round!.activeId,b.room!.round!.activeId);assert.equal(a.room!.round!.turnDeadline,b.room!.round!.turnDeadline);
  }finally{a.ws.terminate();b.ws.terminate();await server.close();}
+});
+
+test('table chat history includes names/times and survives reconnects, server restart and the next round',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-chat-')),db=join(dir,'rooms.sqlite');let runtime=await launch(db);
+ let a=await player(runtime.url,'Chat Host'),b=await player(runtime.url,'Chat Friend');
+ try{
+  await a.send('create',{name:'Chat table',handSize:7});await b.send('join',{code:a.room!.code});await delay();
+  await a.send('message',{text:'First message',effect:'normal'});await delay();
+  await b.send('message',{text:'😂',effect:'echo'});await delay();
+  const saved=structuredClone(a.room!.messages!);assert.equal(saved.length,2);assert.deepEqual(saved,b.room!.messages);
+  assert.deepEqual(saved.map(m=>m.senderName),['Chat Host','Chat Friend']);assert.deepEqual(saved.map(m=>m.text),['First message','😂']);
+  assert(saved.every(m=>Number.isFinite(m.at)&&m.at<=Date.now()));assert.notEqual(saved[0].id,saved[1].id);
+  const at=a.token,bt=b.token;a.ws.terminate();b.ws.terminate();await runtime.server.close();runtime=await launch(db);
+  a=await player(runtime.url,'Chat Host',at);b=await player(runtime.url,'Chat Friend',bt);await delay();assert.deepEqual(a.room!.messages,saved);
+  await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();
+  assert.equal(a.room!.message,null);assert.deepEqual(a.room!.messages,saved);
+  const deadline=a.room!.round!.turnDeadline;await b.send('message',{text:'New round!',effect:'slam'});await delay();
+  assert.equal(a.room!.messages!.length,3);assert.deepEqual(a.room!.messages,b.room!.messages);assert.equal(a.room!.round!.turnDeadline,deadline);
+ }finally{a.ws.terminate();b.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });

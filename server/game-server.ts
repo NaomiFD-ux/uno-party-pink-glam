@@ -4,10 +4,10 @@ import {WebSocketServer,WebSocket} from 'ws';
 import {createAccounts} from './accounts';
 import {Store} from './store';
 import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round,type Move} from '../src/utils/round';
-import type {RoomView,RoomMessage,WinningPlay} from '../src/online/protocol';
+import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
 
 type User={id:string;name:string;avatar:string};
-type Room={code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;event:RoomView['event'];played:Record<string,number>};
+type Room={code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const validText=(x:unknown,max:number)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
 function avatar(x:unknown){return typeof x==='string'&&x.length<=150000&&(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x)||/^https:\/\//.test(x))?x:'';}
@@ -19,7 +19,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
  const accountSessions=new Map<WebSocket,string>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
- function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
+ function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
  function broadcast(r:Room){for(const [ws,code]of members)if(code===r.code){const u=users.get(ws);if(u)send(ws,{type:'room',room:view(r,u.id)});}}
  function commit(r:Room,result?:any){r.revision++;if(result)store.saveResult(r,r.roundId,result);else store.save(r);broadcast(r);}
  const accounts=createAccounts(store,{secure:options.secureCookies??process.env.NODE_ENV==='production',origins:options.allowedOrigins,onLogout:(id,sessionHash)=>{for(const [ws,u]of users)if(u.id===id&&(!sessionHash||accountSessions.get(ws)===sessionHash))ws.close(1008,'Please sign in again.');},onProfile:user=>{for(const [ws,u]of users)if(u.id===user.id)users.set(ws,user);for(const r of rooms.values()){const seat=r.seats.find(s=>s.id===user.id);if(seat){Object.assign(seat,user);const p=r.round?.players.find(p=>p.id===user.id);if(p)Object.assign(p,{name:user.name,avatar:user.avatar});commit(r);}}}});
@@ -87,7 +87,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    }else{
     const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');
     if(input.type==='message'){
-     if(!validText(p.text,120)||!['normal','slam','echo'].includes(p.effect))throw Error('Check your message.');r.message={id:randomUUID(),senderId:user.id,text:p.text.trim(),effect:p.effect,at:Date.now()};store.save(r);broadcast(r);
+     if(!validText(p.text,120)||!['normal','slam','echo'].includes(p.effect))throw Error('Check your message.');const history=r.messages||(r.message?[{...r.message,senderName:r.seats.find(s=>s.id===r.message!.senderId)?.name||'Player'}]:[]);r.message={id:randomUUID(),senderId:user.id,text:p.text.trim(),effect:p.effect,at:Date.now()};r.messages=[...history,{...r.message,senderName:user.name}].slice(-200);store.save(r);broadcast(r);
     }else{
      if(input.revision!==r.revision)throw Error('The table changed. Try again.');
      if(input.type==='ready'){if(r.round)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}

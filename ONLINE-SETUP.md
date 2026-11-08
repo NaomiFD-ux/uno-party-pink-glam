@@ -72,3 +72,6 @@ The user chose Vercel for the website and retained the tested server on a separa
 After a completed round, the host can choose **Invite Players** to reopen the same room. Existing round-win totals remain saved; newcomers join at zero wins, everyone readies up, and the host starts the next deal. The room code and saved personal invitation links stay the same.
 
 Settings includes **Change Profile Picture**. Uploads are cropped to a square and resized to 256×256 JPEG before saving to the account; the updated photo is broadcast to the room and appears in invitation previews.
+
+
+Hold the message button for half a second to open the floating table chat history; a regular tap still opens the composer. The history popup scrolls independently without dimming or blocking the table and can be closed with ×, Escape, or an outside tap. Sender names, local timestamps, dates, and effect labels are shown. The latest 200 messages are saved with the room across reconnects and rounds; public invitation previews do not include chat history.

@@ -1,6 +1,8 @@
+import {ChatButton} from './ChatButton';
+import {ChatHistory} from './ChatHistory';
 import {createPortal} from 'react-dom';
 import {TurnDirections} from './TurnDirections';
-import type {RoomView,WinningPlay} from '../online/protocol';
+import type {RoomView,WinningPlay,ChatMessage} from '../online/protocol';
 import type {Round} from '../utils/round';
 // @refresh reset
 import {EchoEffect} from './EchoEffect';
@@ -63,7 +65,8 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [winningFlight,setWinningFlight]=useState<{x:number;y:number;dx:number;dy:number}|null>(null);
   const [sessionWins,setSessionWins]=useState<Record<string,number>>({});
   const [isMuted,setIsMuted]=useState(soundFX.getMuted());
-  const [showChatMenu,setShowChatMenu]=useState(false);
+  const [showChatMenu,setShowChatMenu]=useState(false),[showChatHistory,setShowChatHistory]=useState(false);
+  const [localMessages,setLocalMessages]=useState<ChatMessage[]>([]);
   const [showExit,setShowExit]=useState(false);
   const [leaving,setLeaving]=useState(false);
   const [leaveError,setLeaveError]=useState('');
@@ -222,6 +225,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const message=text.trim().slice(0,120);if(!message)return;
     chatInput.current?.blur();
     if(online){void online.send('message',{text:message,effect:sendEffect}).then(()=>{setChatDraft('');setShowChatMenu(false);setSendEffect('normal');}).catch(()=>{});return;}
+    setLocalMessages(previous=>[...previous,{id:crypto.randomUUID(),senderId:'player_human',senderName:userName,text:message,effect:sendEffect,at:Date.now()}].slice(-200));
     setReaction(message);setReactionVersion(n=>n+1);
     if(sendEffect!=='normal')setMessageEffect({type:sendEffect,text:message,id:Date.now(),senderId:'player_human'});
     setChatDraft('');setShowChatMenu(false);setSendEffect('normal');soundFX.playTap();
@@ -230,6 +234,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const bots=players.filter(player=>player.type==='bot');
     const bot=bots[demoBotIndex.current++%bots.length];if(!bot)return;
     const text=chatDraft.trim().slice(0,120)||(effect==='slam'?'Not today! 💥':effect==='echo'?'😂😂😂':'Your turn 👀');
+    setLocalMessages(previous=>[...previous,{id:crypto.randomUUID(),senderId:bot.id,senderName:bot.name,text,effect,at:Date.now()}].slice(-200));
     setBotMessage({senderId:bot.id,text,id:Date.now()});
     setMessageEffect(effect==='normal'?null:{type:effect,text,id:Date.now(),senderId:bot.id});
     setShowChatMenu(false);setChatDraft('');soundFX.playTap();
@@ -426,15 +431,10 @@ export const GameTable: React.FC<GameTableProps> = ({
           <div className="flex items-center gap-2">
             {/* Quick chat toggle */}
             <div className="relative">
-              <button
-                onClick={() => setShowChatMenu(!showChatMenu)}
-                className="p-2 rounded-full bg-white/90 hover:bg-white text-pink-600 border border-pink-200 shadow-xs cursor-pointer"
-                title="Chat" aria-label="Open chat" aria-expanded={showChatMenu}
-              >
-                <MessageCircle size={16} />
-              </button>
+              <ChatButton expanded={showChatMenu||showChatHistory} onCompose={()=>setShowChatMenu(!showChatMenu)} onHistory={()=>{chatInput.current?.blur();setShowChatMenu(false);setShowChatHistory(true);}}/>
+              {showChatHistory&&createPortal(<ChatHistory messages={online?.room.messages||localMessages} seats={online?.room.seats||players} selfId={online?.room.you||'player_human'} onClose={()=>setShowChatHistory(false)}/>,document.body)}
 
-              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
+              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" className="chat-history-shortcut" aria-label="View chat history" onClick={()=>{setShowChatMenu(false);setShowChatHistory(true);}}>History</button><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
             </div>
 
             <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>Skip</button>
