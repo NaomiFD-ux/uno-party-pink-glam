@@ -792,3 +792,7 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 @keyframes voice-wave { to { height:23px; } }
 @keyframes voice-glow { to { box-shadow:0 0 16px #ff86cf,0 0 32px #fa168eb0; } }
 @media(prefers-reduced-motion:reduce) { .live-voice-note,.live-voice-note .voice-wave i { animation:none!important; } }
+.slap-profile-target { cursor:pointer;touch-action:manipulation; }
+.slap-profile-target:focus-visible { outline:3px solid white;outline-offset:4px; }
+.profile-slap-hand { position:absolute;z-index:180;font-size:42px;line-height:1;pointer-events:none;filter:drop-shadow(0 2px 5px #f34a9e88); }
+.slap-notice { position:absolute;top:65px;left:50%;translate:-50% 0;z-index:160;border-radius:999px;background:#ffe3f0;color:#8f0754;font-size:12px;padding:8px 14px; }

@@ -143,3 +143,21 @@ test('voice notes synchronize metadata, persist audio outside room state and rej
   const response=await fetch(url+message.voice!.url.replace('/api/game',''));assert.equal(response.status,404);
  }finally{a.ws.terminate();b.ws.terminate();await server.close();}
 });
+
+test('profile slaps synchronize target, preserve gameplay and enforce cooldown and membership',async()=>{
+ const {server,url}=await launch();const a=await player(url,'Slap Host'),b=await player(url,'Slap Friend');
+ try{
+  await a.send('create',{name:'Slap table',handSize:7});await b.send('join',{code:a.room!.code});await delay();
+  await assert.rejects(a.send('slap',{targetId:b.room!.you}),/another player/i);
+  await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();
+  const before=structuredClone(a.room!),target=b.room!.you;
+  await assert.rejects(a.send('slap',{targetId:a.room!.you}),/another player/i);
+  await assert.rejects(a.send('slap',{targetId:'not-at-table'}),/another player/i);
+  await a.send('slap',{targetId:target});await delay();
+  assert.deepEqual(a.room!.message,b.room!.message);assert.equal(a.room!.message!.slap!.targetId,target);assert.equal(a.room!.message!.senderId,a.room!.you);
+  assert.deepEqual(a.room!.round,before.round);assert.equal(a.room!.revision,before.revision);assert.deepEqual(a.room!.event,before.event);
+  assert.equal(a.room!.messages!.at(-1)!.senderName,'Slap Host');assert.match(a.room!.messages!.at(-1)!.text,/Slap Friend/);
+  await assert.rejects(a.send('slap',{targetId:target}),/recover/i);
+  await b.send('slap',{targetId:a.room!.you});await delay();assert.equal(a.room!.message!.slap!.targetId,a.room!.you);
+ }finally{a.ws.terminate();b.ws.terminate();await server.close();}
+});

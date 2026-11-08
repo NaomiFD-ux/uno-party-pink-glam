@@ -17,6 +17,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
  const users=new Map<WebSocket,User>(),members=new Map<WebSocket,string>(),timers=new Map<string,ReturnType<typeof setTimeout>>();
  const turnDuration=options.turnDurationMs??15000;
  const accountSessions=new Map<WebSocket,string>();
+ const lastSlaps=new Map<string,number>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
  function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
@@ -96,7 +97,12 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     if(!r.seats.some(s=>s.id===user!.id)){if(r.round)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
    }else{
     const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');
-    if(input.type==='voice'){
+    if(input.type==='slap'){
+     const target=r.seats.find(s=>s.id===p.targetId);if(!r.round||r.round.winner||!target||target.id===user.id)throw Error('Choose another player at your table.');
+     if(Date.now()-(lastSlaps.get(user.id)||0)<2000)throw Error('Give them a second to recover!');lastSlaps.set(user.id,Date.now());
+     r.message={id:randomUUID(),senderId:user.id,text:`👋 Slapped ${target.name}`,effect:'normal',at:Date.now(),slap:{targetId:target.id}};
+     r.messages=[...(r.messages||[]),{...r.message,senderName:user.name}].slice(-200);store.save(r);broadcast(r);
+    }else if(input.type==='voice'){
      if(typeof p.audio!=='string'||p.audio.length>550000||!/^data:audio\/(webm|mp4|ogg);base64,[A-Za-z0-9+/]+={0,2}$/.test(p.audio)||!Number.isFinite(p.duration)||p.duration<0.1||p.duration>30.5)throw Error('Record a voice message up to 30 seconds.');
      const id=randomUUID(),mime=p.audio.slice(5,p.audio.indexOf(';')),audio=Buffer.from(p.audio.split(',')[1],'base64');
      if(!audio.length||audio.length>400000)throw Error('That recording is too large. Try a shorter message.');

@@ -1,3 +1,4 @@
+import {animateProfileSlap} from '../utils/slap';
 import {VoiceBubble} from './VoiceBubble';
 import {VoiceRecorder} from './VoiceRecorder';
 import {ChatButton} from './ChatButton';
@@ -67,6 +68,9 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [winningFlight,setWinningFlight]=useState<{x:number;y:number;dx:number;dy:number}|null>(null);
   const [sessionWins,setSessionWins]=useState<Record<string,number>>({});
   const [isMuted,setIsMuted]=useState(soundFX.getMuted());
+  const [slap,setSlap]=useState<{targetId:string;id:string}|null>(null);
+  const lastLocalSlap=useRef(0);
+  const [slapError,setSlapError]=useState('');
   const [voiceQueue,setVoiceQueue]=useState<RoomMessage[]>([]);
   const voiceBubble=voiceQueue[0]||null;
   const enqueueVoice=(message:RoomMessage)=>setVoiceQueue(old=>old.some(m=>m.id===message.id)?old:[...old,message].slice(0,10));
@@ -100,6 +104,9 @@ export const GameTable: React.FC<GameTableProps> = ({
   const topCard=discardPile.at(-1)!,humanPlayer=players[0],isHumanTurn=activePlayerIndex===0&&!round.winner;
   const gameWinner=players.find(p=>p.id===round.winner)||null,isColorPickerOpen=!!pendingWildCard;
   const rootRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(!slap||!rootRef.current)return;return animateProfileSlap(rootRef.current,slap.targetId);},[slap?.id]);
+  useEffect(()=>{if(!slapError)return;const timer=setTimeout(()=>setSlapError(''),2500);return()=>clearTimeout(timer);},[slapError]);
+  const slapPlayer=(targetId:string)=>{if(phase!=='playing'||round.winner)return;if(online){void online.send('slap',{targetId}).catch(error=>setSlapError((error as Error).message));}else if(Date.now()-lastLocalSlap.current>=2000){lastLocalSlap.current=Date.now();setSlap({targetId,id:crypto.randomUUID()});}};
   const winningPlay=online?.room.round?.winningPlay||localWinningPlay;
   useEffect(()=>{
     if(!gameWinner){setResultsReady(false);setWinningFlight(null);return;}
@@ -192,7 +199,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const event=online.room.event;if(event&&event.id!==lastOnlineEvent.current){lastOnlineEvent.current=event.id;animateTransition(liveRound.current,next,event.kind==='play'?{type:'play',ids:[]}:{type:'draw'});}else{if(liveRound.current.players.map(p=>p.id).join(',')!==next.players.map(p=>p.id).join(',')){setBatch([]);setPendingWildCard(null);}liveRound.current=next;setRound(next);}
     if(next.active!==0||next.turns!==round.turns){setPendingWildCard(null);setBatch([]);}
   },[online?.room]);
-  useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;if(m.voice){setReaction('');setBotMessage(null);enqueueVoice({...m,senderId:mapId(m.senderId)});soundFX.playTap();return;}const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
+  useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;if(m.slap){setSlap({targetId:mapId(m.slap.targetId),id:m.id});return;}if(m.voice){setReaction('');setBotMessage(null);enqueueVoice({...m,senderId:mapId(m.senderId)});soundFX.playTap();return;}const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
   const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(players,settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
   useEffect(()=>{if(phase==='shuffle'&&!paused)soundFX.playShuffle();},[phase,paused]);
   useEffect(()=>{if(paused||phase==='playing')return;const id=setTimeout(()=>setPhase(phase==='shuffle'?'deal':'playing'),phase==='shuffle'?950:2400);return()=>clearTimeout(id);},[phase,paused]);
@@ -346,8 +353,8 @@ export const GameTable: React.FC<GameTableProps> = ({
 
                   <span className="game-player-name">{bot.name}</span>
                   {/* Avatar ring */}
-                  <div
-                    className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full p-1 transition-all duration-300 ${
+                  <div data-slap-avatar role="button" tabIndex={0} aria-label={`Slap ${bot.name}'s profile`} title={`Tap to slap ${bot.name} 👋`} onClick={()=>slapPlayer(bot.id)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();slapPlayer(bot.id);}}}
+                    className={`slap-profile-target relative w-14 h-14 sm:w-16 sm:h-16 rounded-full p-1 transition-all duration-300 ${
                       isThisBotTurn ? 'animate-turn-halo scale-105 z-20' : 'opacity-85'
                     }`}
                   >
@@ -435,7 +442,7 @@ export const GameTable: React.FC<GameTableProps> = ({
           <div data-player-id="player_human" className="human-game-profile">
             {voiceBubble?.senderId==='player_human'&&voiceBubble.voice&&<div className="profile-chat-bubble voice-bubble"><VoiceBubble key={voiceBubble.id} url={voiceBubble.voice.url} duration={voiceBubble.voice.duration} name={userName} onDone={()=>finishVoice(voiceBubble.id)}/></div>}{reaction&&voiceBubble?.senderId!=='player_human'&&<div className={`profile-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId==='player_human'?'slam-message':''} ${/^\p{Extended_Pictographic}$/u.test(reaction)?'emoji-bubble':''}`} role="status" aria-live="polite" aria-label={`${userName}: ${reaction}`}>{reaction}</div>}
             <span className="game-player-name">{userName} <small>(You)</small></span>
-            <div className="human-profile-content"><img src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
+            <div className="human-profile-content"><img data-slap-avatar src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
           </div>
 
           <div className="player-turn-slot">{phase==='playing'&&!round.winner&&deadline>0&&<span className={`turn-timer ${secondsLeft<=5?'turn-timer-urgent':''}`} aria-label={`${secondsLeft} seconds left in this turn`}>{secondsLeft}s</span>}{isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<span className="player-turn-label" role="status" aria-live="polite">YOUR TURN</span>}</div>
@@ -495,6 +502,7 @@ export const GameTable: React.FC<GameTableProps> = ({
       </div>
 
       {drawFlight&&<div className="draw-flight-layer" aria-hidden="true">{Array.from({length:drawFlight.count},(_,i)=><span key={`${drawFlight.id}-${i}`} className="draw-flight-card" style={{left:drawFlight.x,top:drawFlight.y,animationDelay:`${i*80}ms`,'--flight-x':`${drawFlight.dx}px`,'--flight-y':`${drawFlight.dy}px`} as React.CSSProperties}>UNO</span>)}</div>}
+      {slapError&&<div className="slap-notice" role="status">{slapError}</div>}
       {messageEffect?.type==='echo'&&<EchoEffect key={messageEffect.id} text={messageEffect.text}/>}
       {/* Color Picker Modal */}
       <ColorPickerModal
