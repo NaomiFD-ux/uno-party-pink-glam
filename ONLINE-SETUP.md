@@ -33,7 +33,7 @@ The signup page shows a private recovery code once. Save it somewhere safe. Forg
 
 Photos are cropped to JPEG and stored in the server database. Other players receive a small image URL, not the photo bytes on every turn. Avatar URLs can be viewed by someone who has the URL. Profiles/history are read only through the signed-in account's session. Clients cannot set wins, edit somebody else's profile, or submit a round result. Results and room state save atomically; profiles derive statistics from unique completed round records.
 
-Closing the page or losing signal preserves a player's cards and seat. Their turn waits for them, without a forced timeout. Exit Game asks for confirmation. Leave Match forfeits the current hand, removes the seat, and lets remaining players continue in turn order; the last remaining player wins. A departing host transfers the host role. Simply closing the page remains different: it preserves the seat for reconnect. A host kick/end-round control is not implemented yet. Closing every browser does not erase the saved room. Use the same account to return.
+Closing the page or losing signal preserves a player's cards and seat. The 15-second turn timer continues while they are away, making legal moves automatically. Exit Game asks for confirmation. Leave Match forfeits the current hand, removes the seat, and lets remaining players continue in turn order; the last remaining player wins. A departing host transfers the host role. Simply closing the page remains different: it preserves the seat for reconnect. A host kick/end-round control is not implemented yet. Closing every browser does not erase the saved room. Use the same account to return.
 
 ## Backups
 

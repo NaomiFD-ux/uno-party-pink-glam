@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newRound,moveRound,canPlay,mustTakeDrawStack,leaveRound,Round} from './round';
+import {newRound,moveRound,canPlay,mustTakeDrawStack,leaveRound,automaticMove,Round} from './round';
 import {Card,Player} from '../types/game';
 import {createDeck} from './deck';
 let seq=0;const card=(value:Card['value'],color:Card['color']='red'):Card=>({id:`test-${seq++}`,value,color,score:0});
@@ -13,7 +13,7 @@ test('wild +4 at any time, even with matching color available',()=>{const a=card
 test('draw two stacks by type across colors, rejects mixed +4',()=>{const a=card('draw2','blue'),b=card('wild4','wild'),r=rig([a,b,card('3')],card('5'),4,'draw2');assert.equal(canPlay(r,b),false);const n=moveRound(r,{type:'play',ids:[a.id]});assert.equal(n.pending,6);assert.equal(n.pendingType,'draw2');const taken=moveRound(n,{type:'draw'});assert.equal(taken.players[1].hand.length,8);assert.equal(taken.pending,0);assert.equal(taken.active,2);});
 test('draw four stacks to eight; no immediate drawing',()=>{const a=card('wild4','wild'),r=rig([a,card('3')],card('5'),4,'wild4');const n=moveRound(r,{type:'play',ids:[a.id],color:'blue'});assert.equal(n.pending,8);assert.equal(n.players[1].hand.length,2);assert.equal(moveRound(n,{type:'draw'}).players[1].hand.length,10);});
 test('finishing on any draw card ends immediately without penalty',()=>{for(const value of ['draw2','wild4'] as const){const a=card(value,value==='wild4'?'wild':'red'),r=rig([a],card('5'),value==='wild4'?4:2,value);const n=moveRound(r,{type:'play',ids:[a.id],color:'green'});assert.equal(n.winner,'p0');assert.equal(n.pending,0);assert.equal(n.players[1].hand.length,2);assert.equal(moveRound(n,{type:'draw'}),n);}});
-test('normal draw takes exactly one and does not loop',()=>{const r=rig([card('2')]);r.deck=[card('8','blue')];const n=moveRound(r,{type:'draw'});assert.equal(n.players[0].hand.length,2);assert.equal(n.deck.length,r.deck.length-1);assert.equal(n.active,1);});
+test('normal draw takes exactly one and does not loop',()=>{const r=rig([card('2','green')]);r.deck=[card('8','blue')];const n=moveRound(r,{type:'draw'});assert.equal(n.players[0].hand.length,2);assert.equal(n.deck.length,r.deck.length-1);assert.equal(n.active,1);});
 test('recycling preserves discard top and never creates a new deck',()=>{const r=rig([card('2')]);const top=card('3'),spare=card('8');r.deck=[];r.discard=[spare,top];const n=moveRound(r,{type:'draw'});assert.deepEqual(n.discard,[top]);assert.equal(n.players[0].hand.at(-1)?.id,spare.id);});
 test('skip and reverse; 0 and 7 do not swap hands',()=>{for(const value of ['skip','reverse','0','7'] as const){const a=card(value),r=rig([a,card('4')]),n=moveRound(r,{type:'play',ids:[a.id]});assert.equal(n.active,value==='skip'?2:value==='reverse'?3:1);assert.equal(n.players[1].hand.length,2);}});
 test('two-player reverse returns turn to same player',()=>{const a=card('reverse'),r=rig([a,card('2')]);r.players=r.players.slice(0,2);assert.equal(moveRound(r,{type:'play',ids:[a.id]}).active,0);});
@@ -33,7 +33,7 @@ test('draw penalties are automatic only when matching stack type is absent',()=>
 
 test('playable normal draw stays available without allowing repeated draws',()=>{
  const drawn=card('7','blue'),existing=card('3','red'),r=rig([existing]);r.deck=[card('9','green'),drawn];
- const n=moveRound(r,{type:'draw'});assert.equal(n.active,0);assert.equal(n.drawnCardId,drawn.id);assert.equal(canPlay(n,drawn),true);assert.equal(canPlay(n,existing),false);
+ const n=moveRound(r,{type:'draw'});assert.equal(n.active,0);assert.equal(n.drawnCardId,drawn.id);assert.equal(canPlay(n,drawn),true);assert.equal(canPlay(n,existing),true);
  const played=moveRound(n,{type:'play',ids:[drawn.id]});assert.equal(played.active,1);assert.equal(played.color,'blue');assert.equal(played.players[0].hand.length,1);
  const declined=moveRound(n,{type:'draw'});assert.equal(declined.active,1);assert.equal(declined.deck.length,n.deck.length);assert.equal(declined.players[0].hand.length,n.players[0].hand.length);
 });
@@ -81,4 +81,25 @@ test('leaving cancels the departing active player penalty and the final remainin
  const before=newRound(players().slice(0,2));before.pending=4;before.pendingType='wild4';before.drawnCardId=before.players[0].hand[0].id;
  const after=leaveRound(before,before.players[0].id);
  assert.equal(after.winner,before.players[1].id);assert.equal(after.pending,0);assert.equal(after.pendingType,null);assert.equal(after.drawnCardId,null);
+});
+
+test('normal pluck permits a matching hand card or matching-number batch',()=>{
+ const first=card('3'),second=card('3','green'),drawn=card('8','blue'),r=rig([first,second,card('1','yellow')]);r.deck=[drawn];
+ const after=moveRound(r,{type:'draw'});assert.equal(after.active,0);assert.equal(after.drawnCardId,drawn.id);assert(canPlay(after,first));
+ const batch=moveRound(after,{type:'play',ids:[first.id,second.id]});assert.equal(batch.active,1);assert.equal(batch.color,'green');assert.equal(batch.players[0].hand.length,2);
+});
+test('penalty pluck ends turn even when it adds a matching playable card',()=>{
+ const r=rig([card('1','blue')],card('5'),2,'draw2');r.deck=[card('7'),card('draw2')];
+ const after=moveRound(r,{type:'draw'});assert.equal(after.active,1);assert.equal(after.drawnCardId,null);assert.equal(after.players[0].hand.length,3);
+});
+test('automatic play chooses legal cards, supplies a Wild color, and handles draw/skip',()=>{
+ let r=rig([card('8','blue')]);assert.deepEqual(automaticMove(r),{type:'draw'});
+ r.drawnCardId=r.players[0].hand[0].id;assert.deepEqual(automaticMove(r),{type:'skip'});
+ r=rig([card('wild4','wild'),card('2','green')]);const wild=automaticMove(r);assert.equal(wild.type,'play');assert.equal(moveRound(r,wild).color,'green');
+ r=rig([card('3'),card('3','blue'),card('8','green')]);const normal=automaticMove(r);assert.equal(normal.type,'play');if(normal.type==='play')assert.equal(normal.ids.length,1);assert.notEqual(moveRound(r,normal),r);
+});
+
+test('the previous winner opens the next round without changing seat order',()=>{
+ const seats=players(),r=newRound(seats,7,seats[2].id);assert.equal(r.active,2);assert.deepEqual(r.players.map(p=>p.id),seats.map(p=>p.id));
+ assert.equal(newRound(seats,7,'departed-winner').active,0);
 });

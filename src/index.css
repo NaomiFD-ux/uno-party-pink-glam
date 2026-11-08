@@ -715,3 +715,33 @@ html.game-viewport-locked .hand-tray > .hand-cards { padding-top:80px; padding-b
 .settings-photo strong { display:block; font:700 15px var(--font-heading); color:#650034; overflow-wrap:anywhere; margin-bottom:9px; }
 .settings-photo button { padding:0; text-align:left; font-size:12px; }
 .settings-photo p { font-size:12px; color:#9b5479; margin:9px 0 0; }
+
+/* Three players: opponents in upper corners, with messages below their seats. */
+.game-screen[data-player-count="3"] .opponent:nth-child(1) { left:7%; right:auto; top:3%; transform:none; }
+.game-screen[data-player-count="3"] .opponent:nth-child(2) { right:7%; left:auto; top:3%; transform:none; }
+.game-screen[data-player-count="3"] .opponent .bot-chat-bubble { top:calc(100% + 10px); bottom:auto; left:50%; right:auto; translate:-50% 0; max-width:min(160px,40vw); }
+.turn-flow { position:absolute; inset:0; width:100%; height:100%; z-index:12; pointer-events:none; overflow:visible; }
+.turn-flow path { fill:none; stroke:#fff0f5b3; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+.turn-timer { display:block; font:700 12px var(--font-heading); color:#fff0f5; font-variant-numeric:tabular-nums; margin-bottom:4px; }
+.turn-timer-urgent { color:#ffcfdf; text-shadow:0 0 8px #ffffff90; }
+.compact-color-picker .cancel-color-choice { display:block; width:auto; margin:9px auto 0; padding:5px 12px; border:0; background:transparent; color:#b10e6b; font-size:12px; cursor:pointer; }
+.chat-compose-overlay { position:fixed; left:0; width:100%; z-index:140; display:grid; place-items:center; padding:12px; background:#23021935; }
+.chat-compose-overlay .game-chat-composer { position:relative; inset:auto; width:min(340px,100%); max-height:100%; overflow-y:auto; overscroll-behavior:contain; margin:0; }
+.game-chat-composer input { font-size:16px; touch-action:manipulation; }
+html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data-screen=table] { height:var(--keyboard-board-height,100dvh); }
+@media(max-width:639px) {
+ .hand-tray > .hand-cards { width:min(100%,var(--fan-width)); margin-inline:auto; }
+}
+@media(max-height:500px) { .chat-compose-overlay .game-chat-composer { padding:12px; }.chat-compose-overlay .chat-emoji-options { grid-template-columns:repeat(5,1fr); gap:5px; }.chat-compose-overlay .chat-emoji-options button { padding:5px; } }
+
+.game-screen[data-winning-reveal=true] .discard-target { visibility:hidden; }
+.winning-play-animation { position:fixed; inset:0; z-index:80; pointer-events:none; }
+.winning-play-animation > strong { position:absolute; top:18%; left:50%; translate:-50% 0; max-width:90%; padding:8px 15px; border-radius:999px; background:#430923dd; color:white; font:700 14px var(--font-heading); text-align:center; }
+.winning-card-flight { position:absolute; animation:winning-card-land .5s ease-out both; }
+@keyframes winning-card-land { 0% { opacity:0; transform:translate(0,0) rotate(-15deg) scale(.7); } 12% { opacity:1; } 100% { opacity:1; transform:translate(var(--win-x),var(--win-y)) rotate(0) scale(1); } }
+@media(prefers-reduced-motion:reduce) { .winning-card-flight { animation-duration:.01s; } }
+
+.turn-flow path { animation:turn-arrow-flow 1.35s ease-in-out infinite; }
+.turn-flow[data-paused=true] path { animation-play-state:paused; opacity:.65; }
+@keyframes turn-arrow-flow { 0%,100% { opacity:.35; transform:translateX(-5px); } 55% { opacity:1; transform:translateX(5px); } }
+@media(prefers-reduced-motion:reduce) { .turn-flow path { animation:none; } }

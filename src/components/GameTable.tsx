@@ -1,8 +1,10 @@
-import type {RoomView} from '../online/protocol';
+import {createPortal} from 'react-dom';
+import {TurnDirections} from './TurnDirections';
+import type {RoomView,WinningPlay} from '../online/protocol';
 import type {Round} from '../utils/round';
 // @refresh reset
 import {EchoEffect} from './EchoEffect';
-import {newRound,moveRound,canPlay,mustTakeDrawStack,Move} from '../utils/round';
+import {newRound,moveRound,canPlay,mustTakeDrawStack,automaticMove,Move} from '../utils/round';
 import { CardCountFan } from './CardCountFan';
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Card, CardColor, Player, PlayDirection, GameSettings } from '../types/game';
@@ -56,6 +58,9 @@ export const GameTable: React.FC<GameTableProps> = ({
   function viewRound(view:RoomView):Round{const r=view.round!,ordered=[...r.players];const self=ordered.findIndex(p=>p.id===view.you);ordered.push(...ordered.splice(0,self));return {players:ordered.map(p=>({id:p.id===view.you?'player_human':p.id,name:p.name,avatar:p.avatar||'/default-avatar.svg',title:'',type:p.id===view.you?'human':'bot',hand:p.id===view.you?r.hand:Array.from({length:p.count},(_,i)=>({id:`hidden_${p.id}_${i}`,color:'wild',value:'wild',score:0})),hasCalledGlam:p.uno,score:0})),deck:[],discard:r.discard,color:r.color,direction:r.direction,active:ordered.findIndex(p=>p.id===r.activeId),pending:r.pending,pendingType:r.pendingType,winner:r.winner?(r.winner===view.you?'player_human':r.winner):null,turns:r.turns,humanPlayed:0,uno:view.event?.kind==='play'&&r.players.find(p=>p.id===view.event?.actorId)?.count===1?(view.event.actorId===view.you?'player_human':view.event.actorId):null,drawnCardId:r.drawnCardId};}
   const [phase,setPhase]=useState<'shuffle'|'deal'|'playing'>(()=>online&&Date.now()-online.room.round!.startedAt>3500?'playing':'shuffle');
   const [round,setRound]=useState(()=>online?viewRound(online.room):newRound([{id:'player_human',name:userName||'You',avatar:userAvatar,title:'',type:'human',hand:[],hasCalledGlam:false,score:0},...BOT_PERSONALITIES.map((b,i)=>({...b,id:`bot_${i}`,type:'bot' as const,hand:[],hasCalledGlam:false,score:0}))],settings.initialHandSize));
+  const [localWinningPlay,setLocalWinningPlay]=useState<WinningPlay|undefined>();
+  const [resultsReady,setResultsReady]=useState(false);
+  const [winningFlight,setWinningFlight]=useState<{x:number;y:number;dx:number;dy:number}|null>(null);
   const [sessionWins,setSessionWins]=useState<Record<string,number>>({});
   const [isMuted,setIsMuted]=useState(soundFX.getMuted());
   const [showChatMenu,setShowChatMenu]=useState(false);
@@ -77,7 +82,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const demoBotIndex=useRef(0);
   useEffect(()=>{if(!botMessage)return;const timer=setTimeout(()=>setBotMessage(null),5000);return()=>clearTimeout(timer);},[botMessage]);
   const chatInput=useRef<HTMLInputElement>(null);
-  useEffect(()=>{if(showChatMenu)chatInput.current?.focus();},[showChatMenu]);
+
   const [pendingWildCard,setPendingWildCard]=useState<Card|null>(null);
   const [batch,setBatch]=useState<Card[]>([]);
   const reported=useRef<string|null>(null);
@@ -85,6 +90,17 @@ export const GameTable: React.FC<GameTableProps> = ({
   const topCard=discardPile.at(-1)!,humanPlayer=players[0],isHumanTurn=activePlayerIndex===0&&!round.winner;
   const gameWinner=players.find(p=>p.id===round.winner)||null,isColorPickerOpen=!!pendingWildCard;
   const rootRef=useRef<HTMLDivElement>(null);
+  const winningPlay=online?.room.round?.winningPlay||localWinningPlay;
+  useEffect(()=>{
+    if(!gameWinner){setResultsReady(false);setWinningFlight(null);return;}
+    if(!winningPlay||Date.now()-winningPlay.at>10000){setResultsReady(true);return;}
+    setResultsReady(false);
+    const id=mapId(winningPlay.actorId),seat=Array.from(rootRef.current?.querySelectorAll<HTMLElement>('[data-player-id]')||[]).find(p=>p.dataset.playerId===id);
+    const source=seat?.querySelector('img')?.getBoundingClientRect(),target=rootRef.current?.querySelector('.discard-target')?.getBoundingClientRect();
+    if(source&&target)setWinningFlight({x:source.left,y:source.top,dx:target.left-source.left,dy:target.top-source.top});
+    const timer=setTimeout(()=>{setWinningFlight(null);setResultsReady(true);},Math.max(1600,(winningPlay.cards.length-1)*450+1300));
+    return()=>clearTimeout(timer);
+  },[gameWinner?.id,winningPlay?.at]);
   const [dealPaths,setDealPaths]=useState<Record<string,{x:number;y:number;dx:number;dy:number}>>({});
   const dealSeatIds=(online?.room.round?.players.map(p=>mapId(p.id))||players.map(p=>p.id));
   const dealSeatKey=dealSeatIds.join(',');
@@ -114,15 +130,30 @@ export const GameTable: React.FC<GameTableProps> = ({
     window.addEventListener('resize',measure);
     return()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[phase,paused,dealSeatKey]);
+  const [drawing,setDrawing]=useState(false);
+  const [localDeadline,setLocalDeadline]=useState(0),[clockNow,setClockNow]=useState(Date.now);
+  const [chatViewport,setChatViewport]=useState({top:0,height:typeof window==='undefined'?800:window.innerHeight});
+  useEffect(()=>{const timer=setInterval(()=>setClockNow(Date.now()),200);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{if(!online&&phase==='playing'&&!round.winner)setLocalDeadline(Date.now()+15000);},[online?.room.code,phase,round.turns,round.active]);
+  const deadline=online?.room.round?.turnDeadline||localDeadline;
+  const secondsLeft=Math.min(15,Math.max(0,Math.ceil((deadline-clockNow)/1000)));
+  useEffect(()=>{if(online||paused||drawing||phase!=='playing'||round.winner||!localDeadline)return;const timer=setTimeout(()=>{setPendingWildCard(null);setBatch([]);act(automaticMove(liveRound.current));},Math.max(0,localDeadline-Date.now()));return()=>clearTimeout(timer);},[online?.room.code,paused,drawing,phase,round,localDeadline]);
+  useLayoutEffect(()=>{
+    if(!showChatMenu)return;
+    const html=document.documentElement;html.style.setProperty('--keyboard-board-height',`${rootRef.current?.getBoundingClientRect().height||window.innerHeight}px`);
+    const update=()=>setChatViewport({top:window.visualViewport?.offsetTop||0,height:window.visualViewport?.height||window.innerHeight});
+    update();window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);
+    chatInput.current?.focus({preventScroll:true});
+    return()=>{chatInput.current?.blur();html.style.removeProperty('--keyboard-board-height');window.visualViewport?.removeEventListener('resize',update);window.visualViewport?.removeEventListener('scroll',update);};
+  },[showChatMenu]);
   const liveRound=useRef(round);liveRound.current=round;
   const busyRef=useRef(false);
-  const [drawing,setDrawing]=useState(false);
   const [receivingCards,setReceivingCards]=useState<Record<string,number>>({});
   const [drawFlight,setDrawFlight]=useState<{id:number;count:number;x:number;y:number;dx:number;dy:number}|null>(null);
   const flightTimers=useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(()=>()=>{flightTimers.current.forEach(clearTimeout);if('speechSynthesis' in window)window.speechSynthesis.cancel();},[]);
   const animateTransition=(before:Round,next:Round,move:Move)=>{ 
-    if(!online&&next.winner&&!before.winner){const winnerId=next.winner;setSessionWins(wins=>({...wins,[winnerId]:(wins[winnerId]||0)+1}));}
+    if(!online&&next.winner&&!before.winner){if(move.type==='play')setLocalWinningPlay({actorId:before.players[before.active].id,name:before.players[before.active].name,cards:move.ids.map(id=>before.players[before.active].hand.find(card=>card.id===id)!),color:next.color,at:Date.now()});const winnerId=next.winner;setSessionWins(wins=>({...wins,[winnerId]:(wins[winnerId]||0)+1}));}
     if(move.type==='draw'||move.type==='skip') {
       const player=before.players[before.active],count=next.players[before.active].hand.length-player.hand.length;
       const source=rootRef.current?.querySelector('[aria-label="Draw card"]')?.getBoundingClientRect();
@@ -149,10 +180,10 @@ export const GameTable: React.FC<GameTableProps> = ({
   useEffect(()=>{if(!online)return;const next=viewRound(online.room);setSessionWins(Object.fromEntries(Object.entries(online.room.wins).map(([id,n])=>[mapId(id),n])));
     if(lastOnlineRound.current!==online.room.round!.id){lastOnlineRound.current=online.room.round!.id;lastOnlineEvent.current=online.room.event?.id;flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);setPhase('shuffle');setBatch([]);setPendingWildCard(null);liveRound.current=next;setRound(next);return;}
     const event=online.room.event;if(event&&event.id!==lastOnlineEvent.current){lastOnlineEvent.current=event.id;animateTransition(liveRound.current,next,event.kind==='play'?{type:'play',ids:[]}:{type:'draw'});}else{if(liveRound.current.players.map(p=>p.id).join(',')!==next.players.map(p=>p.id).join(',')){setBatch([]);setPendingWildCard(null);}liveRound.current=next;setRound(next);}
-    if(next.active!==0)setPendingWildCard(null);
+    if(next.active!==0||next.turns!==round.turns){setPendingWildCard(null);setBatch([]);}
   },[online?.room]);
   useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
-  const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);setRound(newRound(players,settings.initialHandSize));setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
+  const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(players,settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
   useEffect(()=>{if(phase==='shuffle'&&!paused)soundFX.playShuffle();},[phase,paused]);
   useEffect(()=>{if(paused||phase==='playing')return;const id=setTimeout(()=>setPhase(phase==='shuffle'?'deal':'playing'),phase==='shuffle'?950:2400);return()=>clearTimeout(id);},[phase,paused]);
   useEffect(()=>{
@@ -161,9 +192,9 @@ export const GameTable: React.FC<GameTableProps> = ({
     return()=>clearTimeout(id);
   },[round,drawing,paused,phase,pendingWildCard]);
   useEffect(()=>{if(online||drawing||paused||phase!=='playing'||round.winner||pendingWildCard||mustTakeDrawStack(round)||round.players[round.active].type!=='bot')return;
-   const id=setTimeout(()=>{const bot=round.players[round.active],choices=bot.hand.filter(c=>canPlay(round,c));if(!choices.length){act({type:'draw'});return;}const first=choices.find(c=>c.color!=='wild')||choices[0],group=!round.drawnCardId&&/^\d$/.test(first.value)?[first,...bot.hand.filter(c=>c.id!==first.id&&c.value===first.value)]:[first];const colors=['red','blue','green','yellow'] as CardColor[];colors.sort((a,b)=>bot.hand.filter(c=>c.color===b).length-bot.hand.filter(c=>c.color===a).length);act({type:'play',ids:group.map(c=>c.id),color:colors[0]});},1400);return()=>clearTimeout(id);
+   const id=setTimeout(()=>{const bot=round.players[round.active],choices=bot.hand.filter(c=>canPlay(round,c));if(!choices.length){act({type:'draw'});return;}const first=choices.find(c=>c.color!=='wild')||choices[0],group=/^\d$/.test(first.value)?[first,...bot.hand.filter(c=>c.id!==first.id&&c.value===first.value)]:[first];const colors=['red','blue','green','yellow'] as CardColor[];colors.sort((a,b)=>bot.hand.filter(c=>c.color===b).length-bot.hand.filter(c=>c.color===a).length);act({type:'play',ids:group.map(c=>c.id),color:colors[0]});},1400);return()=>clearTimeout(id);
   },[round,paused,phase,pendingWildCard,drawing]);
-  useEffect(()=>{if(!round.uno)return;const player=players.find(p=>p.id===round.uno);soundFX.playGlamShout();if(player&&!soundFX.getMuted()&&'speechSynthesis' in window)window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${player.name} has UNO!`));},[round.turns]);
+  useEffect(()=>{if(round.uno)soundFX.playGlamShout();},[round.turns]);
   useEffect(()=>{if(online||!gameWinner||reported.current===gameWinner.id)return;reported.current=gameWinner.id;const sorted=[...players].sort((a,b)=>a.hand.length-b.hand.length);onMatchComplete({placement:(sorted.findIndex(p=>p.type==='human')+1),cardsPlayed:round.humanPlayed,turns:round.turns});},[round.winner]);
   const handleDrawCard=()=>{if(paused||pendingWildCard||round.drawnCardId||phase!=='playing'||!isHumanTurn)return;act({type:'draw'});};
   const handleSkipTurn=()=>{if(paused||drawing||pendingWildCard||phase!=='playing'||!isHumanTurn||(!round.drawnCardId&&!round.pending))return;act({type:'skip'});};
@@ -175,7 +206,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     }
     if(batch.length&&/^\d$/.test(batch[0].value)&&card.value===batch[0].value){setBatch(old=>[...old,card]);return;}
     if(!canPlay(round,card))return;
-    const canCombine=!round.drawnCardId&&/^\d$/.test(card.value)&&humanPlayer.hand.some(other=>other.id!==card.id&&other.value===card.value);
+    const canCombine=/^\d$/.test(card.value)&&humanPlayer.hand.some(other=>other.id!==card.id&&other.value===card.value);
     if(canCombine){setBatch([card]);return;}
     setBatch([]);
     if(card.color==='wild'){setPendingWildCard(card);return;}
@@ -189,6 +220,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const handleSelectWildColor=(color:CardColor)=>{if(pendingWildCard)act({type:'play',ids:[pendingWildCard.id],color});setPendingWildCard(null);};
   const handleSendReaction=(text:string)=>{
     const message=text.trim().slice(0,120);if(!message)return;
+    chatInput.current?.blur();
     if(online){void online.send('message',{text:message,effect:sendEffect}).then(()=>{setChatDraft('');setShowChatMenu(false);setSendEffect('normal');}).catch(()=>{});return;}
     setReaction(message);setReactionVersion(n=>n+1);
     if(sendEffect!=='normal')setMessageEffect({type:sendEffect,text:message,id:Date.now(),senderId:'player_human'});
@@ -235,18 +267,19 @@ export const GameTable: React.FC<GameTableProps> = ({
   useEffect(()=>{if(!reaction)return;const id=setTimeout(()=>setReaction(''),5000);return()=>clearTimeout(id);},[reaction,reactionVersion]);
   const getFeltClass=()=>({berry:'felt-table',ruby:'felt-table-ruby',emerald:'felt-table-emerald',midnight:'felt-table-midnight'}[settings.tableFelt]);
   return (
-    <div ref={rootRef} data-player-count={players.length} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
+    <div ref={rootRef} data-player-count={players.length} data-winning-reveal={!!gameWinner&&!resultsReady} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
       {phase !== 'playing' && <div className={`deal-overlay ${phase}`} role="status" aria-live="polite"><div className="shuffle-stack"><i/><i/><i/><b>UNO</b></div>{phase === 'deal' && Array.from({length:settings.initialHandSize * players.length},(_,i)=><span key={i} className="flying-card" style={{left:dealPaths[dealSeatIds[i%players.length]]?.x,top:dealPaths[dealSeatIds[i%players.length]]?.y,'--deal-x':`${dealPaths[dealSeatIds[i%players.length]]?.dx||0}px`,'--deal-y':`${dealPaths[dealSeatIds[i%players.length]]?.dy||0}px`,animationDelay:`${i*Math.min(65,1900/Math.max(1,settings.initialHandSize*players.length-1))}ms`} as React.CSSProperties}>UNO</span>)}<h2>{phase === 'shuffle' ? 'A little shuffle ✦' : 'Your cards are on their way…'}</h2><p>{phase === 'shuffle' ? 'Fresh deck. Fresh possibilities.' : `${settings.initialHandSize} cards each. Let’s play.`}</p></div>}
       {showExit&&<div className="exit-match-backdrop"><section className="exit-match-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-match-title"><h2 id="exit-match-title">Leave this match?</h2><p>Your current hand will be forfeited.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div><button type="button" className="uno-secondary" disabled={leaving} onClick={()=>setShowExit(false)}>Stay</button><button type="button" className="uno-primary" disabled={leaving} onClick={()=>void leaveMatch()}>{leaving?'Leaving…':'Leave Match'}</button></div></section></div>}
+      {phase==='playing'&&!round.winner&&<TurnDirections root={rootRef} ids={players.map(p=>p.id)} direction={direction}/>}
       {/* Top Table Control Bar */}
       <div className="flex items-center justify-between gap-2 max-w-4xl mx-auto w-full z-20 mb-1">
         <div className="flex items-center gap-2">
           <button
-            onClick={()=>{setLeaveError('');setShowExit(true);}}
+            onClick={()=>{setLeaveError('');setShowExit(true);}} aria-label="Exit Game" title="Exit Game"
             className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-[#881B4D] font-bold text-xs shadow-xs border border-pink-200 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <LogOut size={13} />
-            <span>Exit Game</span>
+
           </button>
 
           <div className="px-3 py-1 rounded-full bg-white/70 border border-pink-200 text-xs font-semibold text-[#881B4D] flex items-center gap-1.5">
@@ -257,14 +290,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
         {/* Turn indicator & Direction */}
         <div className="flex items-center gap-2">
-          <div className="px-3 py-1 rounded-full bg-pink-100 text-pink-700 text-xs font-bold flex items-center gap-1 border border-pink-300">
-            <RefreshCw
-              size={12}
-              className={`transition-transform duration-500 ${direction === 1 ? 'rotate-0' : '-scale-x-100'}`}
-            />
-            <span className="hidden sm:inline">{direction === 1 ? 'Clockwise' : 'Counter'}</span>
-            <span>{direction===1?'↻':'↺'}</span>
-          </div>
+
 
           <button
             onClick={() => {
@@ -395,7 +421,7 @@ export const GameTable: React.FC<GameTableProps> = ({
             <div className="human-profile-content"><img src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
           </div>
 
-          <div className="player-turn-slot">{isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<span className="player-turn-label" role="status" aria-live="polite">YOUR TURN</span>}</div>
+          <div className="player-turn-slot">{phase==='playing'&&!round.winner&&deadline>0&&<span className={`turn-timer ${secondsLeft<=5?'turn-timer-urgent':''}`} aria-label={`${secondsLeft} seconds left in this turn`}>{secondsLeft}s</span>}{isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<span className="player-turn-label" role="status" aria-live="polite">YOUR TURN</span>}</div>
           {/* Quick Reaction & GLAM Shouting */}
           <div className="flex items-center gap-2">
             {/* Quick chat toggle */}
@@ -408,7 +434,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                 <MessageCircle size={16} />
               </button>
 
-              {showChatMenu && <section className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off"/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section>}
+              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
             </div>
 
             <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>Skip</button>
@@ -420,7 +446,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
 
           <div className="hand-cards flex items-center justify-start sm:justify-center overflow-x-auto py-2 px-3 -space-x-4 sm:-space-x-6 min-h-[145px]"
-            style={{'--fan-grid': (humanPlayer?.hand.length || 1) <= 1 ? '70px' : `repeat(${Math.ceil((humanPlayer?.hand.length || 1) / Math.ceil((humanPlayer?.hand.length || 1) / 9)) - 1}, minmax(0, 1fr)) 70px`} as React.CSSProperties}>
+            style={{'--fan-width':`${106+(Math.ceil((humanPlayer?.hand.length||1)/Math.ceil((humanPlayer?.hand.length||1)/9))-1)*34}px`,'--fan-grid': (humanPlayer?.hand.length || 1) <= 1 ? '70px' : `repeat(${Math.ceil((humanPlayer?.hand.length || 1) / Math.ceil((humanPlayer?.hand.length || 1) / 9)) - 1}, minmax(0, 1fr)) 70px`} as React.CSSProperties}>
             {humanPlayer?.hand.map((card, index) => {
               const playable = !drawing && isHumanTurn && (canPlay(round, card) || (batch.length>0 && /^\d$/.test(batch[0].value) && card.value===batch[0].value));
               // Calculate subtle radial rotation fan
@@ -462,11 +488,13 @@ export const GameTable: React.FC<GameTableProps> = ({
       <ColorPickerModal
         isOpen={isColorPickerOpen}
         onSelectColor={handleSelectWildColor}
+        onCancel={()=>{setPendingWildCard(null);setBatch([]);}}
         title="Choose a color"
       />
 
+      {winningFlight&&winningPlay&&!resultsReady&&createPortal(<div className="winning-play-animation" aria-label={`${winningPlay.name}’s winning play`}><strong>{winningPlay.name}’s winning play</strong>{winningPlay.cards.map((card,index)=><div key={card.id} className="winning-card-flight" style={{left:winningFlight.x,top:winningFlight.y,'--win-x':`${winningFlight.dx+index*2}px`,'--win-y':`${winningFlight.dy+index*2}px`,animationDelay:`${index*450}ms`,zIndex:index} as React.CSSProperties}><CardView card={card} chosenColor={card.color==='wild'?winningPlay.color:undefined} size="md"/></div>)}</div>,document.body)}
       {/* Victory / Game Over Modal */}
-      {gameWinner && (
+      {gameWinner && resultsReady && (
         <VictoryModal
           isOpen={true}
           winner={gameWinner}

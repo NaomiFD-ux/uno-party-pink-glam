@@ -8,7 +8,7 @@ import {WebSocket} from 'ws';
 import {createGameServer} from './game-server';
 import type {RoomView} from '../src/online/protocol';
 const origin='http://test';
-async function launch(path=':memory:'){const server=createGameServer({databasePath:path,allowDevAuth:true,allowedOrigins:[origin]});server.http.listen(0,'127.0.0.1');await once(server.http,'listening');const port=(server.http.address() as any).port;return {server,url:`http://127.0.0.1:${port}`};}
+async function launch(path=':memory:',turnDurationMs=15000){const server=createGameServer({databasePath:path,allowDevAuth:true,allowedOrigins:[origin],turnDurationMs});server.http.listen(0,'127.0.0.1');await once(server.http,'listening');const port=(server.http.address() as any).port;return {server,url:`http://127.0.0.1:${port}`};}
 async function player(url:string,name:string,token?:string){if(!token){const res=await fetch(url+'/dev/session',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify({name})});token=(await res.json()).token;}const ws=new WebSocket(url.replace('http','ws'),{origin});await once(ws,'open');let room:RoomView|null=null;const pending=new Map<string,{resolve:()=>void;reject:(e:Error)=>void}>();ws.on('message',bytes=>{const m=JSON.parse(bytes.toString());if(m.type==='room')room=m.room;if(m.type==='reply'){const cb=pending.get(m.id)!;pending.delete(m.id);m.ok?cb.resolve():cb.reject(Error(m.error));}});async function send(type:string,payload:unknown={},revision=room?.revision){await new Promise<void>((resolve,reject)=>{const id=crypto.randomUUID();pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,type,payload,revision}));});}await send('auth',{token});return {ws,token,send,get room(){return room;}};}
 const delay=(n=25)=>new Promise(r=>setTimeout(r,n));
 test('two separate players: private hands, synchronized ready/turns/chat, rejected invalid and stale moves',async()=>{const {server,url}=await launch();const a=await player(url,'Naomi'),b=await player(url,'Friend');try{
@@ -33,11 +33,12 @@ test('ten players complete a real shared round; wins sync once and persist into 
   const card=legal[0];if(card)await active.send('move',{move:{type:'play',ids:[card.id,...(!r.drawnCardId&&/^\d$/.test(card.value)?r.hand.filter(c=>c.id!==card.id&&c.value===card.value).map(c=>c.id):[])],color:'red'}});else await active.send('move',{move:{type:'draw'}});await delay(35);
  }
  const r=all[0].room!;assert(r.round!.winner,'a valid winner must end the round');assert.equal(Object.values(r.wins).reduce((a,b)=>a+b,0),1);for(const p of all)assert.deepEqual(p.room!.wins,r.wins);
+ assert(r.round!.winningPlay);assert.equal(r.round!.winningPlay!.actorId,r.round!.winner);assert(r.round!.winningPlay!.cards.length>0);assert.equal(r.round!.winningPlay!.cards.at(-1)!.id,r.round!.discard.at(-1)!.id);for(const p of all)assert.deepEqual(p.room!.round!.winningPlay,r.round!.winningPlay);
  const previous=r.round!.id,scores=structuredClone(r.wins);
  await assert.rejects(all[1].send('open-seats'),/host/);
  await all[0].send('open-seats');await delay();
  for(const p of all){assert.equal(p.room!.round,null);assert.deepEqual(p.room!.wins,scores);assert(p.room!.seats.every(s=>!s.ready));}
- await all[9].send('leave');await delay();
+ const departing=all.slice(1).find(p=>p.room!.you!==r.round!.winner)!;await departing.send('leave');await delay();
  const newcomer=await player(url,'New next-round player');all.push(newcomer);
  await newcomer.send('join',{code:r.code});await delay();
  assert.equal(all[0].room!.seats.length,10);assert.equal(newcomer.room!.wins[newcomer.room!.you]||0,0);
@@ -45,6 +46,7 @@ test('ten players complete a real shared round; wins sync once and persist into 
  const seated=all.filter(p=>p.room?.code===r.code);
  for(const p of seated){await p.send('ready',{ready:true});await delay();}
  await all[0].send('start');await delay();assert.notEqual(all[0].room!.round!.id,previous);assert.equal(Object.values(all[0].room!.wins).reduce((a,b)=>a+b,0),1);
+ assert.equal(all[0].room!.round!.activeId,r.round!.winner);
  assert.equal(newcomer.room!.round!.hand.length,7);assert(newcomer.room!.round!.players.some(p=>p.id===newcomer.room!.you));
  await assert.rejects(all[0].send('open-seats'),/Finish/);
  }finally{all.forEach(p=>p.ws.terminate());await server.close();}});
@@ -96,4 +98,15 @@ test('explicit leave frees the seat, transfers host, and keeps the next turn syn
   assert.equal(all[2].room!.round!.winner,lastId);assert.equal(all[2].room!.wins[lastId],1);
   await all[2].send('message',{text:'Still here',effect:'normal'});await delay();assert.equal(all[2].room!.wins[lastId],1);
  }finally{all.forEach(p=>p.ws.terminate());await server.close();}
+});
+
+test('the server shares a turn deadline and plays automatically when it expires',async()=>{
+ const {server,url}=await launch(':memory:',180),a=await player(url,'Timer host'),b=await player(url,'Timer friend');
+ try{
+  await a.send('create',{name:'Timed table',handSize:7});await b.send('join',{code:a.room!.code});await delay();
+  await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();
+  assert.equal(a.room!.round!.turnDeadline,b.room!.round!.turnDeadline);assert.equal(a.room!.round!.turnDeadline!-a.room!.round!.startedAt,3680);
+  await delay(3720);assert(a.room!.round!.turns>0,'the first expired turn must resolve automatically');assert.equal(a.room!.round!.turns,b.room!.round!.turns);
+  assert.equal(a.room!.round!.activeId,b.room!.round!.activeId);assert.equal(a.room!.round!.turnDeadline,b.room!.round!.turnDeadline);
+ }finally{a.ws.terminate();b.ws.terminate();await server.close();}
 });
