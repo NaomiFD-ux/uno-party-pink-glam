@@ -79,3 +79,18 @@ test('personal room invitations survive login and restart and expose only the in
   await host.send('leave');await delay();assert.equal((await client(url).request(`/invites/${token}`)).response.status,410);
  }finally{host?.ws.terminate();friend?.ws.terminate();await server.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('voice recordings are playable only by room members and survive a server restart',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-voice-')),db=join(dir,'voice.sqlite');let runtime=await launch(db);const c=client(runtime.url),outsider=client(runtime.url);let ws:Awaited<ReturnType<typeof socket>>|undefined;
+ try{
+  await c.request('/auth/signup',{name:'Voice Host',email:'voice@example.invalid',password});await outsider.request('/auth/signup',{name:'Outside',email:'outside@example.invalid',password});
+  const ticket=(await c.request('/auth/ticket',{})).data.ticket;ws=await socket(runtime.url,ticket);await ws.send('create',{name:'Voice test',handSize:7});
+  await ws.send('voice',{audio:'data:audio/mp4;base64,YWJj',duration:2});await delay();const path=ws.room.message.voice.url.replace('/api/game','');
+  const read=await fetch(runtime.url+path,{headers:{cookie:c.cookie}});assert.equal(read.status,200);assert.equal(read.headers.get('content-type'),'audio/mp4');assert.equal(await read.text(),'abc');
+  const range=await fetch(runtime.url+path,{headers:{cookie:c.cookie,range:'bytes=1-2'}});assert.equal(range.status,206);assert.equal(range.headers.get('content-range'),'bytes 1-2/3');assert.equal(await range.text(),'bc');
+  assert.equal((await fetch(runtime.url+path,{headers:{cookie:outsider.cookie}})).status,404);
+  ws.ws.terminate();await runtime.server.close();runtime=await launch(db);
+  const restored=await fetch(runtime.url+path,{headers:{cookie:c.cookie}});assert.equal(restored.status,200);assert.equal(await restored.text(),'abc');
+ }finally{ws?.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});

@@ -129,3 +129,17 @@ test('table chat history includes names/times and survives reconnects, server re
   assert.equal(a.room!.messages!.length,3);assert.deepEqual(a.room!.messages,b.room!.messages);assert.equal(a.room!.round!.turnDeadline,deadline);
  }finally{a.ws.terminate();b.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+
+test('voice notes synchronize metadata, persist audio outside room state and reject invalid uploads',async()=>{
+ const {server,url}=await launch();const a=await player(url,'Voice Host'),b=await player(url,'Voice Friend');
+ try{
+  await a.send('create',{name:'Voice table',handSize:7});await b.send('join',{code:a.room!.code});await delay();
+  await assert.rejects(a.send('voice',{audio:'data:text/html;base64,PHNjcmlwdD4=',duration:2}),/record/i);
+  await assert.rejects(a.send('voice',{audio:'data:audio/mp4;base64,YWJj',duration:31}),/record/i);
+  await assert.rejects(a.send('voice',{audio:'data:audio/mp4;base64,'+'A'.repeat(550004),duration:2}),/record/i);
+  await a.send('voice',{audio:'data:audio/mp4;base64,YWJj',duration:2});await delay();
+  const message=a.room!.message!;assert.equal(message.text,'Voice message');assert.equal(message.voice!.duration,2);assert.match(message.voice!.url,/^\/api\/game\/voice\//);assert.deepEqual(message,b.room!.message);assert.equal(a.room!.messages!.at(-1)!.senderName,'Voice Host');assert(!JSON.stringify(a.room).includes('base64'));
+  const response=await fetch(url+message.voice!.url.replace('/api/game',''));assert.equal(response.status,404);
+ }finally{a.ws.terminate();b.ws.terminate();await server.close();}
+});

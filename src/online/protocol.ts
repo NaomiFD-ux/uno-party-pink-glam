@@ -1,5 +1,5 @@
 import type {Card,CardColor,PlayDirection} from '../types/game';
-export type RoomMessage={id:string;senderId:string;text:string;effect:'normal'|'slam'|'echo';at:number};
+export type RoomMessage={id:string;senderId:string;text:string;effect:'normal'|'slam'|'echo';at:number;voice?:{url:string;duration:number}};
 export type ChatMessage=RoomMessage&{senderName:string};
 export type Seat={id:string;name:string;avatar:string;ready:boolean;connected:boolean};
 export type WinningPlay={actorId:string;name:string;cards:Card[];color:CardColor;at:number};

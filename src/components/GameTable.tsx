@@ -1,8 +1,9 @@
+import {VoiceRecorder} from './VoiceRecorder';
 import {ChatButton} from './ChatButton';
 import {ChatHistory} from './ChatHistory';
 import {createPortal} from 'react-dom';
 import {TurnDirections} from './TurnDirections';
-import type {RoomView,WinningPlay,ChatMessage} from '../online/protocol';
+import type {RoomView,WinningPlay,ChatMessage,RoomMessage} from '../online/protocol';
 import type {Round} from '../utils/round';
 // @refresh reset
 import {EchoEffect} from './EchoEffect';
@@ -65,6 +66,8 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [winningFlight,setWinningFlight]=useState<{x:number;y:number;dx:number;dy:number}|null>(null);
   const [sessionWins,setSessionWins]=useState<Record<string,number>>({});
   const [isMuted,setIsMuted]=useState(soundFX.getMuted());
+  const [voiceBubble,setVoiceBubble]=useState<RoomMessage|null>(null);
+  useEffect(()=>{if(!voiceBubble)return;const id=setTimeout(()=>setVoiceBubble(null),45000);return()=>clearTimeout(id);},[voiceBubble?.id]);
   const [showChatMenu,setShowChatMenu]=useState(false),[showChatHistory,setShowChatHistory]=useState(false);
   const [localMessages,setLocalMessages]=useState<ChatMessage[]>([]);
   const [showExit,setShowExit]=useState(false);
@@ -185,7 +188,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     const event=online.room.event;if(event&&event.id!==lastOnlineEvent.current){lastOnlineEvent.current=event.id;animateTransition(liveRound.current,next,event.kind==='play'?{type:'play',ids:[]}:{type:'draw'});}else{if(liveRound.current.players.map(p=>p.id).join(',')!==next.players.map(p=>p.id).join(',')){setBatch([]);setPendingWildCard(null);}liveRound.current=next;setRound(next);}
     if(next.active!==0||next.turns!==round.turns){setPendingWildCard(null);setBatch([]);}
   },[online?.room]);
-  useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
+  useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current||Date.now()-m.at>5000)return;lastOnlineMessage.current=m.id;if(m.voice){setReaction('');setBotMessage(null);setVoiceBubble({...m,senderId:mapId(m.senderId)});soundFX.playTap();return;}setVoiceBubble(null);const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
   const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(players,settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
   useEffect(()=>{if(phase==='shuffle'&&!paused)soundFX.playShuffle();},[phase,paused]);
   useEffect(()=>{if(paused||phase==='playing')return;const id=setTimeout(()=>setPhase(phase==='shuffle'?'deal':'playing'),phase==='shuffle'?950:2400);return()=>clearTimeout(id);},[phase,paused]);
@@ -221,6 +224,11 @@ export const GameTable: React.FC<GameTableProps> = ({
     act({type:'play',ids:batch.map(c=>c.id)});
   };
   const handleSelectWildColor=(color:CardColor)=>{if(pendingWildCard)act({type:'play',ids:[pendingWildCard.id],color});setPendingWildCard(null);};
+  const sendVoice=async(audio:string,duration:number)=>{
+    if(online)await online.send('voice',{audio,duration});
+    else{const message:ChatMessage={id:crypto.randomUUID(),senderId:'player_human',senderName:userName,text:'Voice message',effect:'normal',at:Date.now(),voice:{url:audio,duration}};setLocalMessages(old=>[...old,message].slice(-200));setVoiceBubble(message);}
+    setShowChatMenu(false);
+  };
   const handleSendReaction=(text:string)=>{
     const message=text.trim().slice(0,120);if(!message)return;
     chatInput.current?.blur();
@@ -330,7 +338,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               const isThisBotTurn = players[activePlayerIndex]?.id === bot.id;
               return (
                 <div key={bot.id} data-player-id={bot.id} style={players.length>5?{position:'absolute',left:`${index<Math.ceil((players.length-1)/2)?4:74}%`,top:`${4+(index<Math.ceil((players.length-1)/2)?Math.ceil((players.length-1)/2)-1-index:index-Math.ceil((players.length-1)/2))*(68/Math.ceil((players.length-1)/2))}%`}:undefined} className="opponent relative flex flex-col items-center">
-                  {botMessage?.senderId===bot.id&&<div className={`bot-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId===bot.id?'slam-message':''}`} role="status" aria-label={`${bot.name}: ${botMessage.text}`}>{botMessage.text}</div>}
+                  {voiceBubble?.senderId===bot.id&&voiceBubble.voice&&<div className="bot-chat-bubble voice-bubble"><audio controls preload="none" src={voiceBubble.voice.url} aria-label={`${bot.name} voice message`}/></div>}{botMessage?.senderId===bot.id&&<div className={`bot-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId===bot.id?'slam-message':''}`} role="status" aria-label={`${bot.name}: ${botMessage.text}`}>{botMessage.text}</div>}
 
                   <span className="game-player-name">{bot.name}</span>
                   {/* Avatar ring */}
@@ -421,7 +429,7 @@ export const GameTable: React.FC<GameTableProps> = ({
         {/* Action pills row: Human status, GLAM Button, Chat */}
         <div className="player-controls flex items-center justify-between gap-2 mb-2 px-1">
           <div data-player-id="player_human" className="human-game-profile">
-            {reaction&&<div className={`profile-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId==='player_human'?'slam-message':''} ${/^\p{Extended_Pictographic}$/u.test(reaction)?'emoji-bubble':''}`} role="status" aria-live="polite" aria-label={`${userName}: ${reaction}`}>{reaction}</div>}
+            {voiceBubble?.senderId==='player_human'&&voiceBubble.voice&&<div className="profile-chat-bubble voice-bubble"><audio controls preload="none" src={voiceBubble.voice.url} aria-label="Your voice message"/></div>}{reaction&&<div className={`profile-chat-bubble ${messageEffect?.type==='slam'&&messageEffect.senderId==='player_human'?'slam-message':''} ${/^\p{Extended_Pictographic}$/u.test(reaction)?'emoji-bubble':''}`} role="status" aria-live="polite" aria-label={`${userName}: ${reaction}`}>{reaction}</div>}
             <span className="game-player-name">{userName} <small>(You)</small></span>
             <div className="human-profile-content"><img src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
           </div>
@@ -434,7 +442,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               <ChatButton expanded={showChatMenu||showChatHistory} onCompose={()=>setShowChatMenu(!showChatMenu)} onHistory={()=>{chatInput.current?.blur();setShowChatMenu(false);setShowChatHistory(true);}}/>
               {showChatHistory&&createPortal(<ChatHistory messages={online?.room.messages||localMessages} seats={online?.room.seats||players} selfId={online?.room.you||'player_human'} onClose={()=>setShowChatHistory(false)}/>,document.body)}
 
-              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" className="chat-history-shortcut" aria-label="View chat history" onClick={()=>{setShowChatMenu(false);setShowChatHistory(true);}}>History</button><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
+              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" className="chat-history-shortcut" aria-label="View chat history" onClick={()=>{setShowChatMenu(false);setShowChatHistory(true);}}>History</button><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><VoiceRecorder onSend={sendVoice}/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
             </div>
 
             <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>Skip</button>

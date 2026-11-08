@@ -769,3 +769,16 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 .chat-history-panel { position:absolute; right:12px; bottom:calc(100px + env(safe-area-inset-bottom)); width:min(300px,calc(100vw - 24px)); height:min(350px,44dvh); border-radius:22px; pointer-events:auto; }
 .chat-history-panel > header { padding:12px 15px; }.chat-history-panel h2 { font-size:16px; }
 .chat-history-scroll { padding:0 12px 12px; }.chat-history-message { gap:7px; margin-bottom:12px; }.chat-history-message > img { width:27px; height:27px; }.chat-history-message > div { padding:8px 10px; }.chat-history-message p { font-size:13px; }
+/* Voice notes share the message input and never play automatically. */
+.game-chat-composer form { flex-wrap:wrap; }
+.game-chat-composer form > input { flex:1 1 100px; width:0; }
+.game-chat-composer form .voice-record-button { background:#fce2ed;color:#b10e6b;touch-action:none;-webkit-touch-callout:none;user-select:none; }
+.game-chat-composer form .voice-record-button.is-recording { background:#dc244b;color:white;box-shadow:0 0 0 4px #dc244b33; }
+.voice-preview,.voice-error { flex:0 0 100%;order:2;font-size:12px;color:#680c3d; }
+.voice-preview { border-radius:14px;background:#fce7ef;padding:10px;margin-top:4px; }
+.voice-preview audio,.voice-bubble audio,.chat-history-message audio { display:block;width:100%;min-width:0;height:38px; }
+.voice-preview > div { display:flex;gap:8px;margin-top:8px; }
+.game-chat-composer form .voice-preview button { display:flex;gap:5px;width:auto;height:32px;padding:0 10px;border-radius:999px;font-size:12px; }
+.voice-bubble { width:210px;max-width:60vw;padding:6px!important;pointer-events:auto;z-index:60; }
+.chat-history-message audio { max-width:210px;margin-top:4px; }
+.voice-error { color:#ad1742; }

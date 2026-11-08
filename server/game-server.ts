@@ -36,6 +36,16 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
   if(req.url==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,auth:'server-accounts'}));return;}
   if(await accounts.route(req,res))return;
   const path=req.url?.split('?')[0]||'';
+  const voicePath=path.match(/^\/voice\/([a-f0-9-]{36})$/);
+  if(voicePath){
+   const clip=store.db.prepare('SELECT code,mime,audio FROM voice_messages WHERE id=?').get(voicePath[1]) as {code:string;mime:string;audio:Uint8Array}|undefined;
+   const current=accounts.session(req);
+   if(req.method!=='GET'||!current||!clip||!rooms.get(clip.code)?.seats.some(s=>s.id===current.user.id)){res.writeHead(404);res.end();return;}
+   res.setHeader('Content-Type',clip.mime);res.setHeader('Accept-Ranges','bytes');res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
+   const audio=Buffer.from(clip.audio),range=req.headers.range;
+   if(range){const match=/^bytes=(\d*)-(\d*)$/.exec(range);let start=match?.[1]?Number(match[1]):0,end=match?.[2]?Number(match[2]):audio.length-1;if(match&&!match[1]&&match[2]){start=Math.max(0,audio.length-Number(match[2]));end=audio.length-1;}end=Math.min(end,audio.length-1);if(!match||(!match[1]&&!match[2])||start>end||start>=audio.length){res.writeHead(416,{'Content-Range':`bytes */${audio.length}`});res.end();return;}res.statusCode=206;res.setHeader('Content-Range',`bytes ${start}-${end}/${audio.length}`);res.setHeader('Content-Length',end-start+1);res.end(audio.subarray(start,end+1));return;}
+   res.setHeader('Content-Length',audio.length);res.end(audio);return;
+  }
   const createInvite=path.match(/^\/rooms\/([A-Z0-9]{6})\/invite$/);
   const readInvite=path.match(/^\/invites\/([A-Za-z0-9_-]{43})$/);
   if(createInvite||readInvite){
@@ -60,7 +70,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
   if(req.url!=='/dev/session'||req.method!=='POST'||!options.allowDevAuth||!origin||!options.allowedOrigins.includes(origin)){res.writeHead(404);res.end();return;}
   let text='';try{for await(const chunk of req){text+=chunk;if(text.length>160000)throw Error();}const input=JSON.parse(text);if(!validText(input.name,24))throw Error();const token=randomBytes(32).toString('base64url'),user={id:randomUUID(),name:input.name.trim(),avatar:avatar(input.avatar)};store.saveSession(hash(token),user);res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify({token,user}));}catch{res.writeHead(400);res.end();}
  });
- const wss=new WebSocketServer({server:http,maxPayload:16384,verifyClient:(info:{origin:string})=>options.allowedOrigins.includes(info.origin)});
+ const wss=new WebSocketServer({server:http,maxPayload:600000,verifyClient:(info:{origin:string})=>options.allowedOrigins.includes(info.origin)});
  wss.on('connection',ws=>{
   (ws as WebSocket&{alive?:boolean}).alive=true;ws.on('pong',()=>{(ws as WebSocket&{alive?:boolean}).alive=true;});
   let count=0,last=Date.now(),working=false;const deadline=setTimeout(()=>ws.close(1008,'Sign in first'),10000);
@@ -86,7 +96,17 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     if(!r.seats.some(s=>s.id===user!.id)){if(r.round)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
    }else{
     const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');
-    if(input.type==='message'){
+    if(input.type==='voice'){
+     if(typeof p.audio!=='string'||p.audio.length>550000||!/^data:audio\/(webm|mp4|ogg);base64,[A-Za-z0-9+/]+={0,2}$/.test(p.audio)||!Number.isFinite(p.duration)||p.duration<0.1||p.duration>30.5)throw Error('Record a voice message up to 30 seconds.');
+     const id=randomUUID(),mime=p.audio.slice(5,p.audio.indexOf(';')),audio=Buffer.from(p.audio.split(',')[1],'base64');
+     if(!audio.length||audio.length>400000)throw Error('That recording is too large. Try a shorter message.');
+     const history=r.messages||[];if(history.some(m=>m.senderId===user.id&&Date.now()-m.at<1500))throw Error('Please wait a moment before sending another recording.');
+     store.db.prepare('INSERT INTO voice_messages VALUES(?,?,?,?)').run(id,r.code,mime,audio);
+     r.message={id,senderId:user.id,text:'Voice message',effect:'normal',at:Date.now(),voice:{url:`/api/game/voice/${id}`,duration:p.duration}};
+     r.messages=[...history,{...r.message,senderName:user.name}].slice(-200);
+     const keep=new Set(r.messages.filter(m=>m.voice).map(m=>m.id));for(const old of store.db.prepare('SELECT id FROM voice_messages WHERE code=?').all(r.code) as {id:string}[])if(!keep.has(old.id))store.db.prepare('DELETE FROM voice_messages WHERE id=?').run(old.id);
+     store.save(r);broadcast(r);
+    }else if(input.type==='message'){
      if(!validText(p.text,120)||!['normal','slam','echo'].includes(p.effect))throw Error('Check your message.');const history=r.messages||(r.message?[{...r.message,senderName:r.seats.find(s=>s.id===r.message!.senderId)?.name||'Player'}]:[]);r.message={id:randomUUID(),senderId:user.id,text:p.text.trim(),effect:p.effect,at:Date.now()};r.messages=[...history,{...r.message,senderName:user.name}].slice(-200);store.save(r);broadcast(r);
     }else{
      if(input.revision!==r.revision)throw Error('The table changed. Try again.');
