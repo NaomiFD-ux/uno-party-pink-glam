@@ -782,3 +782,13 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 .voice-bubble { width:210px;max-width:60vw;padding:6px!important;pointer-events:auto;z-index:60; }
 .chat-history-message audio { max-width:210px;margin-top:4px; }
 .voice-error { color:#ad1742; }
+.voice-bubble { width:auto;max-width:65vw;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important; }
+.live-voice-note { display:flex;align-items:center;gap:10px;border:1px solid #ffaddb;border-radius:999px;padding:10px 14px;background:linear-gradient(135deg,#ec1687,#a80760);color:#fff;box-shadow:0 0 10px #ff5bb8,0 0 24px #f7289175;cursor:pointer;min-height:42px; }
+.live-voice-note small { font-size:10px;font-weight:700;white-space:nowrap; }
+.voice-wave { display:flex;align-items:center;gap:3px;height:23px; }
+.voice-wave i { display:block;width:3px;height:7px;border-radius:4px;background:white; }
+.live-voice-note.playing { animation:voice-glow .9s ease-in-out infinite alternate; }
+.live-voice-note.playing .voice-wave i { animation:voice-wave .55s ease-in-out infinite alternate; }
+@keyframes voice-wave { to { height:23px; } }
+@keyframes voice-glow { to { box-shadow:0 0 16px #ff86cf,0 0 32px #fa168eb0; } }
+@media(prefers-reduced-motion:reduce) { .live-voice-note,.live-voice-note .voice-wave i { animation:none!important; } }

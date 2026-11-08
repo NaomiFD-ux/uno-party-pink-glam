@@ -38,6 +38,24 @@ class SoundEffectsManager {
     }
   }
 
+  public unlockVoiceAudio() { if(!this.isMuted)this.initCtx(); }
+
+  /** Play voice notes through the same gesture-unlocked context as the game. */
+  public playVoice(url:string,onStarted:()=>void,onDone:()=>void,onBlocked:()=>void) {
+    const abort=new AbortController();let cancelled=false,source:AudioBufferSourceNode|null=null;
+    if(this.isMuted){queueMicrotask(onDone);return ()=>{cancelled=true;};}
+    this.initCtx();const ctx=this.ctx;
+    void (async()=>{try{
+      if(!ctx)throw Error('Audio unavailable');
+      const response=await fetch(url,{credentials:'same-origin',signal:abort.signal});if(!response.ok)throw Error('Voice unavailable');
+      const buffer=await ctx.decodeAudioData(await response.arrayBuffer());if(cancelled)return;
+      if(ctx.state!=='running'){onBlocked();return;}
+      source=ctx.createBufferSource();source.buffer=buffer;source.connect(ctx.destination);this.activeImpacts.add(source);
+      source.onended=()=>{if(source)this.activeImpacts.delete(source);if(!cancelled)onDone();};source.start();onStarted();
+    }catch{if(!cancelled)onBlocked();}})();
+    return ()=>{cancelled=true;abort.abort();if(source){this.activeImpacts.delete(source);try{source.stop();}catch{}}};
+  }
+
   public getMuted(): boolean {
     return this.isMuted;
   }
