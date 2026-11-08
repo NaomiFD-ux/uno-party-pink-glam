@@ -195,7 +195,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     return()=>clearTimeout(id);
   },[round,drawing,paused,phase,pendingWildCard]);
   useEffect(()=>{if(online||drawing||paused||phase!=='playing'||round.winner||pendingWildCard||mustTakeDrawStack(round)||round.players[round.active].type!=='bot')return;
-   const id=setTimeout(()=>{const bot=round.players[round.active],choices=bot.hand.filter(c=>canPlay(round,c));if(!choices.length){act({type:'draw'});return;}const first=choices.find(c=>c.color!=='wild')||choices[0],group=/^\d$/.test(first.value)?[first,...bot.hand.filter(c=>c.id!==first.id&&c.value===first.value)]:[first];const colors=['red','blue','green','yellow'] as CardColor[];colors.sort((a,b)=>bot.hand.filter(c=>c.color===b).length-bot.hand.filter(c=>c.color===a).length);act({type:'play',ids:group.map(c=>c.id),color:colors[0]});},1400);return()=>clearTimeout(id);
+   const id=setTimeout(()=>{const bot=round.players[round.active],choices=bot.hand.filter(c=>canPlay(round,c));if(!choices.length){act({type:'draw'});return;}const first=choices.find(c=>c.color!=='wild')||choices[0],group=(/^\d$/.test(first.value)||first.value==='draw2')?[first,...bot.hand.filter(c=>c.id!==first.id&&c.value===first.value)]:[first];const colors=['red','blue','green','yellow'] as CardColor[];colors.sort((a,b)=>bot.hand.filter(c=>c.color===b).length-bot.hand.filter(c=>c.color===a).length);act({type:'play',ids:group.map(c=>c.id),color:colors[0]});},1400);return()=>clearTimeout(id);
   },[round,paused,phase,pendingWildCard,drawing]);
   useEffect(()=>{if(round.uno)soundFX.playGlamShout();},[round.turns]);
   useEffect(()=>{if(online||!gameWinner||reported.current===gameWinner.id)return;reported.current=gameWinner.id;const sorted=[...players].sort((a,b)=>a.hand.length-b.hand.length);onMatchComplete({placement:(sorted.findIndex(p=>p.type==='human')+1),cardsPlayed:round.humanPlayed,turns:round.turns});},[round.winner]);
@@ -207,9 +207,9 @@ export const GameTable: React.FC<GameTableProps> = ({
       const remaining=batch.filter(c=>c.id!==card.id);
       setBatch(remaining.length&&!canPlay(round,remaining[0])?[]:remaining);return;
     }
-    if(batch.length&&/^\d$/.test(batch[0].value)&&card.value===batch[0].value){setBatch(old=>[...old,card]);return;}
+    if(batch.length&&(/^\d$/.test(batch[0].value)||batch[0].value==='draw2')&&card.value===batch[0].value){setBatch(old=>[...old,card]);return;}
     if(!canPlay(round,card))return;
-    const canCombine=/^\d$/.test(card.value)&&humanPlayer.hand.some(other=>other.id!==card.id&&other.value===card.value);
+    const canCombine=(/^\d$/.test(card.value)||card.value==='draw2')&&humanPlayer.hand.some(other=>other.id!==card.id&&other.value===card.value);
     if(canCombine){setBatch([card]);return;}
     setBatch([]);
     if(card.color==='wild'){setPendingWildCard(card);return;}
@@ -320,7 +320,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
       {/* RADIAL CARD FELT TABLE */}
       <div
-        className={`game-felt relative w-full max-w-4xl mx-auto h-[380px] sm:h-[430px] rounded-[48px] sm:rounded-[70px] ${getFeltClass()} border-4 sm:border-8 border-[#ffe8ed]/90 flex flex-col justify-between items-center p-3 sm:p-6 transition-all duration-300 relative overflow-visible`}
+        className={`game-felt relative w-full max-w-4xl mx-auto h-[380px] sm:h-[430px] rounded-[48px] sm:rounded-[70px] ${getFeltClass()} border-4 sm:border-8 border-[#ffe8ed]/70 flex flex-col justify-between items-center p-3 sm:p-6 transition-all duration-300 relative overflow-visible`}
       >
         {/* Opponent Bots Row (Top 3 radial pods) */}
         <div className="opponents w-full flex items-center justify-around gap-2 z-20 pt-1">
@@ -445,10 +445,10 @@ export const GameTable: React.FC<GameTableProps> = ({
         <div className="hand-tray relative w-full rounded-3xl glass-pearl p-2 sm:p-3 overflow-hidden border border-pink-200 shadow-lg">
 
 
-          <div className="hand-cards flex items-center justify-start sm:justify-center overflow-x-auto py-2 px-3 -space-x-4 sm:-space-x-6 min-h-[145px]"
-            style={{'--fan-width':`${106+(Math.ceil((humanPlayer?.hand.length||1)/Math.ceil((humanPlayer?.hand.length||1)/9))-1)*34}px`,'--fan-grid': (humanPlayer?.hand.length || 1) <= 1 ? '70px' : `repeat(${Math.ceil((humanPlayer?.hand.length || 1) / Math.ceil((humanPlayer?.hand.length || 1) / 9)) - 1}, minmax(0, 1fr)) 70px`} as React.CSSProperties}>
+          <div className="hand-cards flex items-center justify-start sm:justify-center overflow-x-auto py-2 px-3 -space-x-2 sm:-space-x-3 min-h-[145px]"
+            style={{'--fan-width':`${106+(Math.ceil((humanPlayer?.hand.length||1)/Math.ceil((humanPlayer?.hand.length||1)/7))-1 )*48}px`,'--fan-grid': (humanPlayer?.hand.length || 1) <= 1 ? '70px' : `repeat(${Math.ceil((humanPlayer?.hand.length || 1) / Math.ceil((humanPlayer?.hand.length || 1) / 9)) - 1}, minmax(0, 1fr)) 70px`} as React.CSSProperties}>
             {humanPlayer?.hand.map((card, index) => {
-              const playable = !drawing && isHumanTurn && (canPlay(round, card) || (batch.length>0 && /^\d$/.test(batch[0].value) && card.value===batch[0].value));
+              const playable = !drawing && isHumanTurn && (canPlay(round, card) || (batch.length>0 && (/^\d$/.test(batch[0].value)||batch[0].value==='draw2') && card.value===batch[0].value));
               // Calculate subtle radial rotation fan
               const totalCards = humanPlayer.hand.length;
               const rowSize = Math.ceil(totalCards / Math.ceil(totalCards / 9));

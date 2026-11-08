@@ -17,12 +17,12 @@ export function moveRound(old:Round,m:Move):Round {
   r.drawnCardId=null;next();return r;
  }
  if(!m.ids.length||new Set(m.ids).size!==m.ids.length)return old;const found=m.ids.map(id=>p.hand.find(c=>c.id===id));if(found.some(c=>!c))return old;const cards=found as Card[],first=cards[0],last=cards.at(-1)!;
- if(!canPlay(r,first)||cards.length>1&&(!/^\d$/.test(first.value)||cards.some(c=>c.value!==first.value)))return old;
+ if(!canPlay(r,first)||cards.length>1&&((!/^\d$/.test(first.value)&&first.value!=='draw2')||cards.some(c=>c.value!==first.value)))return old;
  if(last.color==='wild'&&(!m.color||m.color==='wild'))return old;
  r.drawnCardId=null;
  p.hand=p.hand.filter(c=>!m.ids.includes(c.id));r.discard.push(...cards);r.color=last.color==='wild'?m.color!:last.color;if(p.type==='human')r.humanPlayed+=cards.length;p.hasCalledGlam=p.hand.length===1;if(p.hand.length===1)r.uno=p.id;
  if(!p.hand.length){r.winner=p.id;r.pending=0;r.pendingType=null;r.turns++;return r;}
- let steps=1;if(last.value==='reverse'){r.direction=(r.direction*-1) as PlayDirection;if(r.players.length===2)steps=2;}if(last.value==='skip')steps=2;if(last.value==='draw2'||last.value==='wild4'){r.pending+=last.value==='draw2'?2:4;r.pendingType=last.value;}next(steps);return r;
+ let steps=1;if(last.value==='reverse'){r.direction=(r.direction*-1) as PlayDirection;if(r.players.length===2)steps=2;}if(last.value==='skip')steps=2;if(last.value==='draw2'||last.value==='wild4'){r.pending+=last.value==='draw2'?2*cards.length:4;r.pendingType=last.value;}next(steps);return r;
 }
 
 export function mustTakeDrawStack(r:Round):boolean {

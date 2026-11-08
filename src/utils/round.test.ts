@@ -103,3 +103,19 @@ test('the previous winner opens the next round without changing seat order',()=>
  const seats=players(),r=newRound(seats,7,seats[2].id);assert.equal(r.active,2);assert.deepEqual(r.players.map(p=>p.id),seats.map(p=>p.id));
  assert.equal(newRound(seats,7,'departed-winner').active,0);
 });
+
+
+test('multiple mixed-color +2 cards accumulate every card and extend existing penalties',()=>{
+ for(const pending of [0,4]){
+  const cards=[card('draw2'),card('draw2','blue'),card('draw2','green'),card('draw2','yellow')];
+  const r=rig([...cards,card('3')],card('5'),pending,pending?'draw2':null);
+  const n=moveRound(r,{type:'play',ids:cards.map(c=>c.id)});
+  assert.equal(n.pending,pending+8);assert.equal(n.pendingType,'draw2');assert.equal(n.color,'yellow');assert.equal(n.active,1);assert.equal(n.players[0].hand.length,1);
+  const drawn=moveRound(n,{type:'draw'});assert.equal(drawn.players[1].hand.length,2+pending+8);assert.equal(drawn.active,2);
+ }
+});
+test('+2 batches require a legal first card and cannot mix action types',()=>{
+ const blue=card('draw2','blue'),red=card('draw2'),wild=card('wild4','wild');const r=rig([blue,red,wild,card('3')]);
+ assert.equal(moveRound(r,{type:'play',ids:[blue.id,red.id]}),r);
+ assert.equal(moveRound(r,{type:'play',ids:[red.id,wild.id],color:'green'}),r);
+});
