@@ -210,3 +210,15 @@ test('likely ballots survive reconnect/restart and explicitly leaving removes in
   await a.send('leave');await delay();assert.equal(b.room!.hostId,b.room!.you);assert.equal(b.room!.party!.phase,'finished');await b.send('likely-lobby');await delay();assert.equal(b.room!.party,null);
  }finally{a.ws.terminate();b.ws.terminate();c.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('dashboard game selection creates the requested playable room and rejects coming-soon modes',async()=>{
+ const {server,url}=await launch();const a=await player(url,'Dashboard Host'),b=await player(url,'Dashboard Friend');
+ try{
+  await assert.rejects(a.send('create',{name:'No fake game',handSize:7,game:'spades'}),/settings/i);
+  await a.send('create',{name:'Likely from dashboard',handSize:7,game:'likely'});await delay();assert.equal(a.room!.game,'likely');assert.equal(a.room!.round,null);
+  await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();assert(a.room!.party);assert.equal(a.room!.round,null);
+ }finally{a.ws.terminate();b.ws.terminate();await server.close();}
+});
+
+
+test('upgraded room setup accepts a ten-card starting hand',async()=>{const {server,url}=await launch();const a=await player(url,'Ten-card Host'),b=await player(url,'Ten-card Friend');try{await a.send('create',{name:'Ten-card game',handSize:10,game:'uno'});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();assert.equal(a.room!.handSize,10);assert.equal(a.room!.round!.hand.length,10);assert.equal(b.room!.round!.hand.length,10);}finally{a.ws.terminate();b.ws.terminate();await server.close();}});

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game Night · Phone Preview</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff5f9}body{display:grid;place-items:center}.phone{position:relative;width:390px;height:844px;flex:none;box-shadow:0 8px 40px #73033222}iframe{display:block;width:390px;height:844px;border:0;background:#50052f}
+</style>
+</head>
+<body><main class="phone" aria-label="iPhone-sized game preview"><iframe src="/table-preview" title="Game Night mobile view" allow="microphone; autoplay; clipboard-write"></iframe></main>
+<script>
+document.querySelector('iframe').src=['127.0.0.1','localhost'].includes(location.hostname)?'/table-preview?screen='+encodeURIComponent(new URLSearchParams(location.search).get('screen')||'waiting'):'/';
+const phone=document.querySelector('.phone');
+function fit(){const scale=Math.min(1,innerWidth/390,innerHeight/844);phone.style.transform=`scale(${scale})`;phone.style.transformOrigin='center';}
+addEventListener('resize',fit);fit();
+</script>
+</body></html>

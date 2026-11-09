@@ -28,10 +28,11 @@ import {
   VolumeX,
   Flame,
   Settings,
-  LogOut,
+  ChevronLeft,
 } from 'lucide-react';
 
 interface GameTableProps {
+  practicePlayerCount?: number;
   online?:{room:RoomView;send:(type:string,payload?:unknown)=>Promise<void>};
   paused?: boolean;
   tableName: string;
@@ -49,6 +50,7 @@ interface GameTableProps {
 
 export const GameTable: React.FC<GameTableProps> = ({
   online,
+  practicePlayerCount = 5,
   paused = false,
   tableName,
   settings,
@@ -62,7 +64,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const mapId=(id:string)=>id===selfId?'player_human':id;
   function viewRound(view:RoomView):Round{const r=view.round!,ordered=[...r.players];const self=ordered.findIndex(p=>p.id===view.you);ordered.push(...ordered.splice(0,self));return {players:ordered.map(p=>({id:p.id===view.you?'player_human':p.id,name:p.name,avatar:p.avatar||'/default-avatar.svg',title:'',type:p.id===view.you?'human':'bot',hand:p.id===view.you?r.hand:Array.from({length:p.count},(_,i)=>({id:`hidden_${p.id}_${i}`,color:'wild',value:'wild',score:0})),hasCalledGlam:p.uno,score:0})),deck:[],discard:r.discard,color:r.color,direction:r.direction,active:ordered.findIndex(p=>p.id===r.activeId),pending:r.pending,pendingType:r.pendingType,winner:r.winner?(r.winner===view.you?'player_human':r.winner):null,turns:r.turns,humanPlayed:0,uno:view.event?.kind==='play'&&r.players.find(p=>p.id===view.event?.actorId)?.count===1?(view.event.actorId===view.you?'player_human':view.event.actorId):null,drawnCardId:r.drawnCardId};}
   const [phase,setPhase]=useState<'shuffle'|'deal'|'playing'>(()=>online&&Date.now()-online.room.round!.startedAt>3500?'playing':'shuffle');
-  const [round,setRound]=useState(()=>online?viewRound(online.room):newRound([{id:'player_human',name:userName||'You',avatar:userAvatar,title:'',type:'human',hand:[],hasCalledGlam:false,score:0},...BOT_PERSONALITIES.map((b,i)=>({...b,id:`bot_${i}`,type:'bot' as const,hand:[],hasCalledGlam:false,score:0}))],settings.initialHandSize));
+  const [round,setRound]=useState(()=>online?viewRound(online.room):newRound([{id:'player_human',name:userName||'You',avatar:userAvatar,title:'',type:'human',hand:[],hasCalledGlam:false,score:0},...BOT_PERSONALITIES.slice(0,Math.max(1,Math.min(4,practicePlayerCount-1))).map((b,i)=>({...b,id:`bot_${i}`,type:'bot' as const,hand:[],hasCalledGlam:false,score:0}))],settings.initialHandSize));
   const [localWinningPlay,setLocalWinningPlay]=useState<WinningPlay|undefined>();
   const [resultsReady,setResultsReady]=useState(false);
   const [winningFlight,setWinningFlight]=useState<{x:number;y:number;dx:number;dy:number}|null>(null);
@@ -102,6 +104,7 @@ export const GameTable: React.FC<GameTableProps> = ({
   const {players,deck,discard:discardPile,color:currentColor,direction,active:activePlayerIndex}=round;
   useEffect(()=>{setVoiceQueue(old=>old.filter(message=>players.some(player=>player.id===message.senderId)));},[players.map(player=>player.id).join(',')]);
   const topCard=discardPile.at(-1)!,humanPlayer=players[0],isHumanTurn=activePlayerIndex===0&&!round.winner;
+  const handCount=humanPlayer?.hand.length||0,handRows=Math.max(1,Math.ceil(handCount/7)),handColumns=Math.max(1,Math.ceil(handCount/handRows));
   const gameWinner=players.find(p=>p.id===round.winner)||null,isColorPickerOpen=!!pendingWildCard;
   const rootRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{if(!slap||!rootRef.current)return;return animateProfileSlap(rootRef.current,slap.targetId);},[slap?.id]);
@@ -291,51 +294,11 @@ export const GameTable: React.FC<GameTableProps> = ({
   useEffect(()=>{if(!reaction)return;const id=setTimeout(()=>setReaction(''),5000);return()=>clearTimeout(id);},[reaction,reactionVersion]);
   const getFeltClass=()=>({berry:'felt-table',ruby:'felt-table-ruby',emerald:'felt-table-emerald',midnight:'felt-table-midnight'}[settings.tableFelt]);
   return (
-    <div ref={rootRef} onPointerDownCapture={()=>soundFX.unlockVoiceAudio()} data-player-count={players.length} data-winning-reveal={!!gameWinner&&!resultsReady} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
+    <div ref={rootRef} onPointerDownCapture={()=>soundFX.unlockVoiceAudio()} data-hand-rows={handRows} data-player-count={players.length} data-winning-reveal={!!gameWinner&&!resultsReady} data-message-effect={messageEffect?.type} data-phase={phase} data-felt={settings.tableFelt} className="game-screen velvet-game relative w-full min-h-[calc(100vh-4rem)] flex flex-col justify-between overflow-hidden select-none pb-4 pt-2 px-2 sm:px-4">
       {phase !== 'playing' && <div className={`deal-overlay ${phase}`} role="status" aria-live="polite"><div className="shuffle-stack"><i/><i/><i/><b>UNO</b></div>{phase === 'deal' && Array.from({length:settings.initialHandSize * players.length},(_,i)=><span key={i} className="flying-card" style={{left:dealPaths[dealSeatIds[i%players.length]]?.x,top:dealPaths[dealSeatIds[i%players.length]]?.y,'--deal-x':`${dealPaths[dealSeatIds[i%players.length]]?.dx||0}px`,'--deal-y':`${dealPaths[dealSeatIds[i%players.length]]?.dy||0}px`,animationDelay:`${i*Math.min(65,1900/Math.max(1,settings.initialHandSize*players.length-1))}ms`} as React.CSSProperties}>UNO</span>)}<h2>{phase === 'shuffle' ? 'A little shuffle ✦' : 'Your cards are on their way…'}</h2><p>{phase === 'shuffle' ? 'Fresh deck. Fresh possibilities.' : `${settings.initialHandSize} cards each. Let’s play.`}</p></div>}
       {showExit&&<div className="exit-match-backdrop"><section className="exit-match-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-match-title"><h2 id="exit-match-title">Leave this match?</h2><p>Your current hand will be forfeited.</p>{leaveError&&<p role="alert">{leaveError}</p>}<div><button type="button" className="uno-secondary" disabled={leaving} onClick={()=>setShowExit(false)}>Stay</button><button type="button" className="uno-primary" disabled={leaving} onClick={()=>void leaveMatch()}>{leaving?'Leaving…':'Leave Match'}</button></div></section></div>}
       {phase==='playing'&&!round.winner&&<TurnDirections root={rootRef} ids={players.map(p=>p.id)} direction={direction}/>}
-      {/* Top Table Control Bar */}
-      <div className="flex items-center justify-between gap-2 max-w-4xl mx-auto w-full z-20 mb-1">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={()=>{setLeaveError('');setShowExit(true);}} aria-label="Exit Game" title="Exit Game"
-            className="px-3 py-1.5 rounded-full bg-white/80 hover:bg-white text-[#881B4D] font-bold text-xs shadow-xs border border-pink-200 transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <LogOut size={13} />
-
-          </button>
-
-          <div className="px-3 py-1 rounded-full bg-white/70 border border-pink-200 text-xs font-semibold text-[#881B4D] flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="truncate max-w-[120px] sm:max-w-none">{tableName}</span>
-          </div>
-        </div>
-
-        {/* Turn indicator & Direction */}
-        <div className="flex items-center gap-2">
-
-
-          <button
-            onClick={() => {
-              const muted = soundFX.toggleMute();
-              setIsMuted(muted);
-            }}
-            className="p-1.5 rounded-full bg-white/80 text-[#881B4D] border border-pink-200 hover:bg-white shadow-xs cursor-pointer"
-            title="Toggle Sound"
-          >
-            {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-          </button>
-
-          <button
-            onClick={onOpenSettings}
-            className="p-1.5 rounded-full bg-white/80 text-[#881B4D] border border-pink-200 hover:bg-white shadow-xs cursor-pointer"
-            title="Settings" aria-label="Settings"
-          >
-            <Settings size={15} />
-          </button>
-        </div>
-      </div>
+      <div className="velvet-toolbar"><button type="button" className="velvet-exit" onClick={()=>{setLeaveError('');setShowExit(true);}} aria-label="Exit Game" title="Exit Game"><ChevronLeft size={24}/></button><div className="velvet-table-title"><strong>{tableName}</strong><span>{players.length} players</span></div><div className="velvet-toolbar-actions"><button type="button" aria-label={isMuted?'Unmute sound':'Mute sound'} onClick={()=>setIsMuted(soundFX.toggleMute())}>{isMuted?<VolumeX size={22}/>:<Volume2 size={22}/>}</button><button type="button" aria-label="Settings" onClick={onOpenSettings}><Settings size={22}/></button></div></div>
 
       {/* RADIAL CARD FELT TABLE */}
       <div
@@ -396,13 +359,13 @@ export const GameTable: React.FC<GameTableProps> = ({
 
           {/* DRAW PILE */}
           <div className="flex flex-col items-center">
-            <div className="relative group cursor-pointer" role="button" tabIndex={0} aria-label="Draw card" onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleDrawCard();}}} onClick={handleDrawCard}>
+            <div className="draw-stack-target relative group cursor-pointer" role="button" tabIndex={0} aria-label="Draw card" onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleDrawCard();}}} onClick={handleDrawCard}>
               {/* Stacked effect layers */}
               <div className="absolute -top-1 -left-1 w-16 h-24 sm:w-20 sm:h-28 rounded-xl bg-pink-900/60 shadow-md transform -rotate-3" />
               <div className="absolute -top-0.5 -right-0.5 w-16 h-24 sm:w-20 sm:h-28 rounded-xl bg-pink-800/80 shadow-md transform rotate-2" />
               <CardView isBack size="md" className="group-hover:scale-105 transition-transform" />
             </div>
-            <div className="mt-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-xs text-white text-[10px] sm:text-xs font-bold border border-white/20">
+            <div className="draw-label mt-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-xs text-white text-[10px] sm:text-xs font-bold border border-white/20">
               Draw
             </div>
           </div>
@@ -437,6 +400,7 @@ export const GameTable: React.FC<GameTableProps> = ({
 
       {/* BOTTOM HUMAN PLAYER CONTROLS & DOCK */}
       <div className="hand-dock relative max-w-4xl mx-auto w-full z-20 mt-2">
+        <div className={`turn-status-panel ${isHumanTurn?'is-your-turn':''}`} role="status"><div><strong>{round.winner?'ROUND COMPLETE':isHumanTurn?'YOUR TURN':`${players[activePlayerIndex]?.name||'Player'}’S TURN`}</strong><span>{drawing?'Cards are on their way…':isHumanTurn?batch.length?`Tap the face-up pile to play ${batch.length} ${batch.length===1?'card':'cards'}`:round.pending?`Stack ${round.pendingType==='draw2'?'+2':'+4'} or Skip to pluck ${round.pending}`:round.drawnCardId?'Play a matching card, or Skip':/^\d$/.test(topCard.value)?`Play a ${currentColor} card or a ${topCard.value}`:`Play ${currentColor} or a matching symbol`:'Your next move is coming.'}</span></div>{phase==='playing'&&!round.winner&&deadline>0&&<span className={`turn-clock ${secondsLeft<=5?'is-urgent':''}`} style={{'--clock-degrees':`${secondsLeft/15*360}deg`} as React.CSSProperties} aria-label={`${secondsLeft} seconds left in this turn`}><b>{secondsLeft}s</b></span>}</div>
         {/* Action pills row: Human status, GLAM Button, Chat */}
         <div className="player-controls flex items-center justify-between gap-2 mb-2 px-1">
           <div data-player-id="player_human" className="human-game-profile">
@@ -445,7 +409,7 @@ export const GameTable: React.FC<GameTableProps> = ({
             <div className="human-profile-content"><img data-slap-avatar src={userAvatar} alt={userName} className={isHumanTurn?'human-avatar active':'human-avatar'}/><CardCountFan count={humanPlayer?.hand.length || 0}/>{humanPlayer.hand.length===1&&<span className="player-uno-badge">UNO!</span>}{isHumanTurn&&<span className="human-turn-dot" title="Your turn" aria-label="Your turn"/>}</div>
           </div>
 
-          <div className="player-turn-slot">{phase==='playing'&&!round.winner&&deadline>0&&<span className={`turn-timer ${secondsLeft<=5?'turn-timer-urgent':''}`} aria-label={`${secondsLeft} seconds left in this turn`}>{secondsLeft}s</span>}{isHumanTurn&&phase==='playing'&&!drawing&&!paused&&<span className="player-turn-label" role="status" aria-live="polite">YOUR TURN</span>}</div>
+
           {/* Quick Reaction & GLAM Shouting */}
           <div className="flex items-center gap-2">
             {/* Quick chat toggle */}
@@ -456,7 +420,7 @@ export const GameTable: React.FC<GameTableProps> = ({
               {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" className="chat-history-shortcut" aria-label="View chat history" onClick={()=>{setShowChatMenu(false);setShowChatHistory(true);}}>History</button><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><VoiceRecorder onSend={sendVoice}/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
             </div>
 
-            <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>Skip</button>
+            <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>SKIP</button>
           </div>
         </div>
 
@@ -465,12 +429,12 @@ export const GameTable: React.FC<GameTableProps> = ({
 
 
           <div className="hand-cards flex items-center justify-start sm:justify-center overflow-x-auto py-2 px-3 -space-x-2 sm:-space-x-3 min-h-[145px]"
-            style={{'--fan-width':`${106+(Math.ceil((humanPlayer?.hand.length||1)/Math.ceil((humanPlayer?.hand.length||1)/7))-1 )*48}px`,'--fan-grid': (humanPlayer?.hand.length || 1) <= 1 ? '70px' : `repeat(${Math.ceil((humanPlayer?.hand.length || 1) / Math.ceil((humanPlayer?.hand.length || 1) / 9)) - 1}, minmax(0, 1fr)) 70px`} as React.CSSProperties}>
+            style={{'--fan-width':`${(handRows>1?84:98)+(handColumns-1)*(handRows>1?40:48)}px`,'--fan-grid': handColumns===1?'var(--hand-card-width,70px)':`repeat(${handColumns-1}, minmax(0, 1fr)) var(--hand-card-width,70px)`} as React.CSSProperties}>
             {humanPlayer?.hand.map((card, index) => {
               const playable = !drawing && isHumanTurn && (canPlay(round, card) || (batch.length>0 && (/^\d$/.test(batch[0].value)||batch[0].value==='draw2') && card.value===batch[0].value));
               // Calculate subtle radial rotation fan
               const totalCards = humanPlayer.hand.length;
-              const rowSize = Math.ceil(totalCards / Math.ceil(totalCards / 9));
+              const rowSize = handColumns;
               const rowIndex = index % rowSize;
               const rowLength = Math.min(rowSize, totalCards - Math.floor(index / rowSize) * rowSize);
               const mid = (rowLength - 1) / 2;
@@ -480,7 +444,7 @@ export const GameTable: React.FC<GameTableProps> = ({
                 <div
                   key={card.id}
                   className="hand-card-slot transition-transform duration-200 hover:z-30 focus:z-30 shrink-0"
-                  style={{'--card-index': index, '--fan-angle': `${angle}deg`} as React.CSSProperties}
+                  style={{'--card-index': index, '--fan-angle': `${angle}deg`, '--fan-rise': `${-Math.max(0, 1 - (mid ? Math.abs(rowIndex-mid)/mid : 0))*9}px`} as React.CSSProperties}
                 >
                   {receivingCards[card.id]!==undefined ? <div className="receiving-card" style={{animationDelay:`${receivingCards[card.id]}ms`} as React.CSSProperties}><div className="receiving-back" aria-hidden="true"><b>UNO</b></div>
                   <CardView

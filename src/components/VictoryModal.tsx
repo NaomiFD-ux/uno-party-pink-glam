@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { Player } from '../types/game';
-import { Trophy, Award, ArrowRight, RotateCcw, UserPlus } from 'lucide-react';
+import { Crown, ArrowRight, RotateCcw, UserPlus } from 'lucide-react';
 import { soundFX } from '../utils/audio';
 
 interface VictoryModalProps {
@@ -65,109 +65,16 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   const sortedPlayers = [...players].sort((a,b)=>(sessionWins[b.id]||0)-(sessionWins[a.id]||0));
   const roundsCompleted=Object.values(sessionWins).reduce((total,wins)=>total+wins,0);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#650034]/70 backdrop-blur-md animate-in fade-in duration-300">
-      <div className="relative w-full max-w-md glass-modal p-6 sm:p-8 rounded-3xl shadow-2xl border-2 border-pink-300/80 text-center overflow-y-auto max-h-[90svh]">
-        {/* Top ambient glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-20 bg-pink-500/25 blur-2xl pointer-events-none" />
-
-        {/* Floating badge */}
-        <div className="mx-auto w-20 h-20 rounded-full bg-linear-to-tr from-pink-500 to-amber-400 p-1 shadow-xl mb-4 relative">
-          <div className="w-full h-full rounded-full bg-white flex items-center justify-center">
-            {isHumanWinner ? (
-              <Trophy className="w-10 h-10 text-amber-500 drop-shadow animate-bounce" />
-            ) : (
-              <Award className="w-10 h-10 text-pink-600 drop-shadow" />
-            )}
-          </div>
-          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-pink-600 text-white flex items-center justify-center text-xs font-black shadow-md border-2 border-white">
-            ✦
-          </div>
-        </div>
-
-        <span className="inline-block px-3 py-1 rounded-full bg-pink-100 text-pink-700 font-bold text-xs uppercase tracking-wider mb-2 border border-pink-200">
-          Round {roundsCompleted} complete
-        </span>
-
-        <h2 className="text-3xl font-extrabold text-[#3E001E] font-heading mb-1">
-          {isHumanWinner ? 'You won!' : `${winner.name} wins!`}
-        </h2>
-        <p className="text-sm text-[#574048] mb-5">
-          {isHumanWinner
-            ? 'Nice play!'
-            : 'Ready for another round?'}
-        </p>
-
-        {/* Scoreboard Rankings */}
-        <div className="space-y-2 mb-6 text-left">
-          <div className="text-xs font-bold uppercase tracking-wider text-[#881B4D] px-1">
-            Round wins at this table
-          </div>
-          {sortedPlayers.map((player, idx) => {
-            const isWinnerItem = player.id === winner.id;
-            const isCurrent = player.id === humanPlayerId;
-            return (
-              <div
-                key={player.id}
-                className={`flex items-center justify-between p-2.5 rounded-xl text-xs sm:text-sm font-medium transition-all ${
-                  isWinnerItem
-                    ? 'bg-linear-to-r from-amber-100 to-pink-100 border border-amber-300 shadow-xs text-amber-950 font-bold'
-                    : isCurrent
-                    ? 'bg-pink-50 border border-pink-200 text-[#3E001E]'
-                    : 'bg-white/60 text-[#574048]'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${
-                      idx === 0
-                        ? 'bg-amber-400 text-amber-950'
-                        : idx === 1
-                        ? 'bg-gray-300 text-gray-800'
-                        : idx === 2
-                        ? 'bg-amber-600/60 text-white'
-                        : 'bg-pink-200 text-pink-800'
-                    }`}
-                  >
-                    {idx + 1}
-                  </span>
-                  <img
-                    src={player.avatar}
-                    alt={player.name}
-                    className="w-7 h-7 rounded-full object-cover border border-white shadow-xs"
-                  />
-                  <span>
-                    {player.name} {isCurrent && '(You)'}
-                  </span>
-                </div>
-                <div className="text-xs text-right font-semibold text-[#881B4D]">
-                  <strong className="session-win-count">{sessionWins[player.id]||0}</strong> {(sessionWins[player.id]||0)===1?'win':'wins'}{player.id===winner.id&&<small className="round-winner-label">Won this round</small>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <p className="session-score-note">Totals since this table started · kept for the next round</p>
-        {onInvitePlayers&&<button type="button" className="invite-next-round" disabled={inviting} onClick={async()=>{setInviting(true);setInviteError('');try{await onInvitePlayers();}catch(e){setInviteError((e as Error).message);}finally{setInviting(false);}}}><UserPlus size={17}/>{inviting?'Opening table…':'Invite Players'}</button>}
-        {inviteError&&<p className="form-error" role="alert">{inviteError}</p>}
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            disabled={playAgainDisabled||inviting}
-            onClick={onPlayAgain}
-            className="btn-glam-primary py-3 px-4 rounded-full text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md cursor-pointer"
-          >
-            <RotateCcw size={16} /> {playAgainLabel}
-          </button>
-          <button
-            onClick={onGoToLobby}
-            className="py-3 px-4 rounded-full bg-white hover:bg-pink-50 text-[#881B4D] font-bold text-sm border-1.5 border-pink-300 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-          >
-            Lobby <ArrowRight size={16} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="velvet-victory" role="dialog" aria-modal="true" aria-label="Round results"><section className="velvet-victory-content">
+    <header className="victory-brand"><strong>UNO</strong><span>GAME NIGHT</span></header>
+    <p className="victory-round">Round {roundsCompleted} complete</p>
+    <div className="victory-portrait"><div className="winner-confetti" aria-hidden="true">{Array.from({length:12},(_,i)=><i key={i} style={{'--confetti-angle':`${i*30}deg`,'--confetti-delay':`${i*-.18}s`} as React.CSSProperties}/>)}</div><Crown aria-hidden="true"/><img src={winner.avatar||'/default-avatar.svg'} alt={winner.name}/></div>
+    <h2>{isHumanWinner?'You won!':`${winner.name} wins!`}</h2><p className="victory-subtitle">One round down. Who’s next?</p>
+    <section className="victory-scoreboard" aria-label="Round wins at this table"><header><h3>Round wins</h3><span>This table</span></header>
+    {sortedPlayers.map(player=><article key={player.id} className={player.id===winner.id?'is-winner':''}><span className="victory-rank">{player.id===winner.id?<Crown size={18}/>:null}</span><img src={player.avatar||'/default-avatar.svg'} alt=""/><div><strong>{player.name}{player.id===humanPlayerId?' (You)':''}</strong>{player.id===winner.id&&<small>Round winner</small>}</div><b>{sessionWins[player.id]||0} {(sessionWins[player.id]||0)===1?'win':'wins'}</b></article>)}
+    </section><p className="victory-carry">Wins carry into the next round.</p>
+    {onInvitePlayers&&<button type="button" className="invite-next-round" disabled={inviting} onClick={async()=>{setInviting(true);setInviteError('');try{await onInvitePlayers();}catch(e){setInviteError((e as Error).message);}finally{setInviting(false);}}}><UserPlus size={17}/>{inviting?'Opening table…':'Invite Players'}</button>}
+    {inviteError&&<p className="form-error" role="alert">{inviteError}</p>}
+    <div className="victory-actions"><button disabled={playAgainDisabled||inviting} onClick={onPlayAgain}><RotateCcw size={20}/>{playAgainLabel}</button><button onClick={onGoToLobby}>Back to Lobby <ArrowRight size={18}/></button></div>
+  </section></div>;
 };

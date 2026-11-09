@@ -1,5 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
-const RULES=[
+export const RULES=[
  ['Play a card','Match the current color, number or action symbol. Wild cards, including Wild +4, can be played at any time outside a pending draw stack.'],
  ['Matching numbers','Play several cards with the same number, even in different colors. Playable cards glow white and lift from your hand. A single card plays immediately when tapped. If another card has the same number, tap the cards in the order you want, then tap the face-up pile to play your selection. Tap a selected card again to deselect it. Your first card must match the table; the last card sets the next color.'],
  ['Stack draw cards','Play as many +2 cards together as you want, even across colors: three +2 cards pass along draw 6. Select them, then tap the face-up pile. The first must be playable; the last sets the color. Stack +2 only on +2, or +4 only on +4. Colors do not need to match for a +2 stack. Never mix the two types. If you have no matching draw card, the accumulated total is automatically dealt to you and your turn ends. If you have a matching draw card but do not want to play it, press Skip to take the whole accumulated penalty instead.'],

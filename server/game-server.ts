@@ -89,9 +89,9 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    if(!user)throw Error('Please sign in.');if(accountSessions.has(ws)&&!accounts.lookup(accountSessions.get(ws)!)){ws.close(1008,'Please sign in again.');throw Error('Please sign in again.');}const p=input.payload||{};
    if(input.type==='create'){
     if([...rooms.values()].some(r=>r.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');
-    if(!validText(p.name,40)||![5,7,9].includes(p.handSize))throw Error('Check the room settings.');
+    if(!validText(p.name,40)||![5,7,9,10].includes(p.handSize)||(p.game!==undefined&&!['uno','likely'].includes(p.game)))throw Error('Check the room settings.');
     let code='';do{code=Array.from({length:6},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(32)]).join('');}while(rooms.has(code));
-    const room:Room={code,name:p.name.trim(),hostId:user.id,handSize:p.handSize,revision:0,seats:[{...user,ready:false}],wins:{},round:null,roundId:'',startedAt:0,message:null,event:null,played:{}};rooms.set(code,room);members.set(ws,code);commit(room);
+    const room:Room={game:p.game||'uno',code,name:p.name.trim(),hostId:user.id,handSize:p.handSize,revision:0,seats:[{...user,ready:false}],wins:{},round:null,roundId:'',startedAt:0,message:null,event:null,played:{}};rooms.set(code,room);members.set(ws,code);commit(room);
    }else if(input.type==='join'){
     if(typeof p.code!=='string'||!/^[A-Z0-9]{6}$/.test(p.code))throw Error('Enter a six-character code.');const r=rooms.get(p.code);if(!r)throw Error('That room code was not found.');
     if([...rooms.values()].some(o=>o.code!==r.code&&o.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');

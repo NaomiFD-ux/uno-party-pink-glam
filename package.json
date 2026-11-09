@@ -11,7 +11,7 @@
     "server:dev": "UNO_DEV_AUTH=1 tsx server/index.ts",
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "server:start": "NODE_ENV=production node dist-game/index.mjs",
-    "test": "node --import tsx --test src/utils/round.test.ts server/*.test.ts",
+    "test": "node --import tsx --test src/utils/round.test.ts src/utils/roomCode.test.ts server/*.test.ts",
     "server:build": "esbuild server/index.ts --bundle --platform=node --target=node24 --packages=external --format=esm --outfile=dist-game/index.mjs",
     "backup": "node --import tsx scripts/backup.ts"
   },

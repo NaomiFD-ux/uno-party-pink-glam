@@ -119,3 +119,6 @@ test('+2 batches require a legal first card and cannot mix action types',()=>{
  assert.equal(moveRound(r,{type:'play',ids:[blue.id,red.id]}),r);
  assert.equal(moveRound(r,{type:'play',ids:[red.id,wild.id],color:'green'}),r);
 });
+
+
+test('ten-player ten-card deal reserves a numeric opening card and preserves all 108 cards',()=>{const seats=Array.from({length:10},(_,i)=>({...players()[0],id:`ten-${i}`}));const r=newRound(seats,10);assert(r.players.every(p=>p.hand.length===10));assert.equal(r.deck.length,7);assert.match(r.discard[0].value,/^\d$/);assert.equal(new Set([...r.deck,...r.discard,...r.players.flatMap(p=>p.hand)].map(c=>c.id)).size,108);});

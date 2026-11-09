@@ -1,18 +1,30 @@
-import { Dashboard } from './Dashboard';
-import { JoinGameModal } from './JoinGameModal';
-import { useState, FormEvent } from 'react';
-import { Plus, KeyRound, X } from 'lucide-react';
-import { GameSettings, UserProfile } from '../types/game';
-interface Props { profile:UserProfile;onProfile:()=>void; settings:GameSettings;onUpdateSettings:(s:Partial<GameSettings>)=>void;onJoinTable:(name:string,practice?:boolean,hand?:number)=>void;onJoinCode?:(code:string)=>Promise<void>; }
-export function LobbyScreen({profile,onProfile,settings,onUpdateSettings,onJoinTable,onJoinCode}:Props) {
-  const [practice,setPractice]=useState(false);
-  const [creating,setCreating] = useState(false); const [joining,setJoining] = useState(false);
-  const [name,setName] = useState('Game Night'); const [timer,setTimer] = useState(settings.turnTimeoutSeconds);
-  const [hand,setHand] = useState(settings.initialHandSize); const [notice,setNotice] = useState('');
-  function create(e:FormEvent) {e.preventDefault();onUpdateSettings({turnTimeoutSeconds:timer,initialHandSize:hand});setCreating(false);onJoinTable(name.trim()||'Game Night',practice,hand);}
-  return <section className="home-games dashboard-page"><section className="dashboard-hero"><div className="dashboard-identity"><button className="dashboard-avatar" aria-label="View your profile" onClick={onProfile}><img src={profile.avatar} alt=""/></button><div><h1>Welcome back, {profile.username}! <span>✨</span></h1><p>Ready for your next game night?</p></div></div><div className="dashboard-room-actions"><button className="uno-primary" onClick={()=>setCreating(true)}><Plus size={18}/> Create Room</button><button className="uno-secondary" onClick={()=>{setJoining(true);setNotice('');}}><KeyRound size={17}/> Join with Code</button></div></section><Dashboard profile={profile} onProfile={onProfile}/>
-
-    {creating && <div className="clean-modal-backdrop"><section className="clean-modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><button className="modal-close" aria-label="Close create game" onClick={()=>setCreating(false)}><X/></button><h2 id="create-title">Create Game</h2><form onSubmit={create}><label>Game name<input required maxLength={40} value={name} onChange={e=>setName(e.target.value)}/></label><label>Starting hand<select value={hand} onChange={e=>setHand(Number(e.target.value))}><option value={5}>5 cards</option><option value={7}>7 cards</option><option value={9}>9 cards</option></select></label><label>Play with<select value={practice?'bots':'friends'} onChange={e=>setPractice(e.target.value==='bots')}><option value="friends">Friends · room code</option><option value="bots">Practice · 4 bots</option></select></label><button className="uno-primary">Create Game</button></form></section></div>}
-    {joining && <JoinGameModal onJoin={onJoinCode} onClose={()=>setJoining(false)} onHost={()=>{setJoining(false);setCreating(true);}}/>}
-  </section>;
+import {CreateRoomModal} from './CreateRoomModal';
+import {JoinGameModal} from './JoinGameModal';
+import {useState,type FormEvent} from 'react';
+import {Plus,KeyRound,Gamepad2,ArrowRight,Users,History,Sparkles} from 'lucide-react';
+import type {GameSettings,UserProfile} from '../types/game';
+import {historyDate} from '../utils/history';
+type GameMode='uno'|'likely';
+interface Props {profile:UserProfile;onProfile:()=>void;onHistory:()=>void;onGames:()=>void;view?:'home'|'games';settings:GameSettings;onUpdateSettings:(s:Partial<GameSettings>)=>void;onJoinTable:(name:string,practice?:boolean,hand?:number,game?:GameMode)=>void;onJoinCode?:(code:string)=>Promise<void>;}
+const games=[
+ {id:'uno',name:'UNO',image:'uno',tone:'rose',players:'2–10',live:true},
+ {id:'likely',name:'Who’s Most Likely To…',image:'likely',tone:'lilac',players:'2–10',live:true},
+ {id:'spades',name:'Spades',image:'spades',tone:'lilac',players:'2–4',live:false},
+ {id:'dominoes',name:'Dominoes',image:'dominoes',tone:'peach',players:'2–4',live:false},
+ {id:'ludo',name:'Ludo',image:'ludo',tone:'rose',players:'2–4',live:false},
+ {id:'trivia',name:'Friend Group Trivia',image:'trivia',tone:'peach',players:'2–10',live:false},
+];
+export function LobbyScreen({profile,onProfile,onHistory,onGames,view='home',settings,onUpdateSettings,onJoinTable,onJoinCode}:Props){
+ const [practice,setPractice]=useState(false),[creating,setCreating]=useState(false),[joining,setJoining]=useState(false),[selected,setSelected]=useState<GameMode>('uno');
+ const [name,setName]=useState('Game Night'),[hand,setHand]=useState(settings.initialHandSize);
+ const latest=profile.matchHistory[0];
+ function openCreate(game:GameMode='uno'){setSelected(game);if(game==='likely')setPractice(false);setCreating(true);}
+ function create(event:FormEvent){event.preventDefault();onUpdateSettings({initialHandSize:hand});setCreating(false);onJoinTable(name.trim()||'Game Night',selected==='uno'&&practice,hand,selected);}
+ return <section className="night-dashboard">
+  {view==='home'&&<><h1 className="night-greeting">Hey, {profile.username}!</h1><section className="night-hero" aria-label="Your next game night"><div className="night-hero-copy"><h2>Good friends.<br/>Great games.<span aria-hidden="true">✦</span></h2><p>Your next game night starts here.</p></div><div className="night-hero-actions"><button onClick={()=>openCreate()}><Plus size={23}/>Create Room</button><button onClick={()=>setJoining(true)}><KeyRound size={23}/>Join with Code</button></div></section></>}
+  <section className="night-catalog" aria-label="Games"><div className="night-section-heading"><h2><Gamepad2/>{view==='home'?'Pick your game':'Your game night lineup'}</h2>{view==='home'&&<button onClick={onGames}>View all <ArrowRight size={20}/></button>}</div><div className="night-game-grid">{games.map(game=><article key={game.id} className={`night-game-card ${game.tone}`}><img className="night-game-art" src={`/game-night/${game.image}.webp`} alt=""/><h3>{game.name}</h3><p><Users size={14}/> Multiplayer · {game.players} players</p>{game.live?<button className="night-play" onClick={()=>openCreate(game.id as GameMode)}>Play now</button>:<span className="night-coming">Coming soon</span>}</article>)}</div></section>
+  {view==='home'&&<><section className="night-stats" aria-label="Your UNO round statistics"><h2>Your stats <Sparkles size={18}/></h2>{[{value:profile.gamesPlayed,label:'Played'},{value:profile.wins,label:'Wins'},{value:profile.bestStreak,label:'Best streak'}].map(stat=><div key={stat.label}><strong>{stat.value}</strong><span>{stat.label}</span></div>)}</section><section className="night-recent"><div className="night-section-heading"><h2><History/>Recently played</h2></div>{latest?<button className="night-recent-row" onClick={onHistory}><span className="night-recent-art"><img src="/game-night/uno.webp" alt="UNO"/></span><span className="night-recent-info"><strong>{latest.tableName}</strong><small>Last played {historyDate(latest.date)}</small></span><span className="night-recent-view">View <ArrowRight size={20}/></span></button>:<div className="night-recent-empty"><span>Your first game night is waiting.</span><button onClick={onGames}>Pick a game <ArrowRight size={18}/></button></div>}</section></>}
+  {creating&&<CreateRoomModal game={selected} onGame={setSelected} name={name} onName={setName} hand={hand} onHand={setHand} practice={practice} onPractice={setPractice} onClose={()=>setCreating(false)} onCreate={create}/>}
+  {joining&&<JoinGameModal onJoin={onJoinCode} onClose={()=>setJoining(false)} onHost={()=>{setJoining(false);openCreate();}}/>}
+ </section>;
 }
