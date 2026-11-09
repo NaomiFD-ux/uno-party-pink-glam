@@ -23,3 +23,12 @@ Built-in image editing; final assets: `public/game-night/velvet-table-magenta.we
 - Card prompt: Replace red with cool hot magenta pink (#f42b98 top, #aa075c bottom), smooth satin gloss; white rounded edge, subtle pink inset line, white sparkle circle and UNO lettering; preserve geometry and transparency.
 
 - **Thin rim revision** (`public/game-night/velvet-table-thin-rim.webp`), built-in image edit: reduce padded perimeter radial width by about 45 percent, expanding inner surface; preserve approved cool magenta pink, fine velvet nap, seam, lighting, horizontal oval and transparency. No objects or text.
+
+
+Pool table: `public/pool/neon-velvet-table.webp`. Built-in image generation edit. Prompt: Preserve reference overhead bright pink velvet table, glossy pink rails, rose gold hardware, neon strips and six pockets; remove all balls, rack and shadows, no text or UI. Live balls drawn separately.
+
+
+Pool ball sprites: `public/pool/ball-sprites.webp`, built-in image generation. Prompt: Transparent 2×2 sprite sheet of equally sized luxurious glossy 3D billiard balls: purple solid, ivory with diagonal purple stripe, blush white with hot pink hearts, ivory cue ball. Polished resin, large softbox reflections and pink neon reflected light; overhead camera, no text, numbers or props. Each ball renders independently from its sprite region, clipped to its physical circle.
+
+
+`public/pool/eight-ball.webp`: built-in image generation. Prompt: single glossy black 8 billiard ball, transparent background, ivory number badge facing camera, polished resin with white softbox and pink neon reflections, no other objects.

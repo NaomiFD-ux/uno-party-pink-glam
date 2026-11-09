@@ -1,3 +1,4 @@
+import {newPool,shootPool,placeCue,leavePool,poolBusyUntil,type PoolState} from '../src/utils/pool';
 import {LIKELY_TOPICS} from '../src/data/likelyTopics';
 import {fairQuestions,newLikely,revealLikely,likelyView,removeLikelyPlayer,type LikelyState} from './likely';
 import {createServer} from 'node:http';
@@ -9,7 +10,7 @@ import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round
 import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
 
 type User={id:string;name:string;avatar:string};
-type Room={lastActivityAt?:number;expiredAt?:number;likelyTopics?:string[];questionsByPlayer?:Record<string,string[]>;game?:'uno'|'likely';customQuestions?:string[];party?:LikelyState|null;code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
+type Room={pool?:PoolState|null;poolWins?:Record<string,number>;lastActivityAt?:number;expiredAt?:number;likelyTopics?:string[];questionsByPlayer?:Record<string,string[]>;game?:'uno'|'likely'|'pool';customQuestions?:string[];party?:LikelyState|null;code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const validText=(x:unknown,max:number)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
 function avatar(x:unknown){return typeof x==='string'&&x.length<=150000&&(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x)||/^https:\/\//.test(x))?x:'';}
@@ -20,15 +21,15 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
  const turnDuration=options.turnDurationMs??15000;
  const voteDuration=options.likelyVoteDurationMs??15000;
  const inactivityMs=options.inactivityMs??10*60*1000;
- function expireIdle(r:Room){if(!r.lastActivityAt)r.lastActivityAt=r.message?.at||r.startedAt||Date.now();if(!(r.round||r.party)||Date.now()-r.lastActivityAt<inactivityMs)return false;
-  clearTimeout(timers.get(r.code));timers.delete(r.code);r.round=null;r.party=null;r.turnDeadline=undefined;r.winningPlay=undefined;r.event=null;r.message=null;r.expiredAt=Date.now();r.seats.forEach(s=>s.ready=false);commit(r);return true;
+ function expireIdle(r:Room){if(!r.lastActivityAt)r.lastActivityAt=r.message?.at||r.startedAt||Date.now();if(!(r.round||r.party||r.pool)||Date.now()-r.lastActivityAt<inactivityMs)return false;
+  clearTimeout(timers.get(r.code));timers.delete(r.code);r.round=null;r.party=null;r.pool=null;r.turnDeadline=undefined;r.winningPlay=undefined;r.event=null;r.message=null;r.expiredAt=Date.now();r.seats.forEach(s=>s.ready=false);commit(r);return true;
  }
 
  const accountSessions=new Map<WebSocket,string>();
  const lastSlaps=new Map<string,number>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
- function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {expiredAt:r.expiredAt,game:r.game||'uno',customQuestions:r.questionsByPlayer?.[id]||(id===r.hostId?r.customQuestions||[]:[]),likelyTopics:r.likelyTopics||[],questionCounts:Object.fromEntries(r.seats.map(s=>[s.id,(r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[])).length])),party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
+ function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {pool:r.pool,poolWins:r.poolWins||{},serverNow:Date.now(),expiredAt:r.expiredAt,game:r.game||'uno',customQuestions:r.questionsByPlayer?.[id]||(id===r.hostId?r.customQuestions||[]:[]),likelyTopics:r.likelyTopics||[],questionCounts:Object.fromEntries(r.seats.map(s=>[s.id,(r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[])).length])),party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
  function broadcast(r:Room){for(const [ws,code]of members)if(code===r.code){const u=users.get(ws);if(u)send(ws,{type:'room',room:view(r,u.id)});}}
  function commit(r:Room,result?:any){r.revision++;if(result)store.saveResult(r,r.roundId,result);else store.save(r);broadcast(r);}
  const accounts=createAccounts(store,{secure:options.secureCookies??process.env.NODE_ENV==='production',origins:options.allowedOrigins,onLogout:(id,sessionHash)=>{for(const [ws,u]of users)if(u.id===id&&(!sessionHash||accountSessions.get(ws)===sessionHash))ws.close(1008,'Please sign in again.');},onProfile:user=>{for(const [ws,u]of users)if(u.id===user.id)users.set(ws,user);for(const r of rooms.values()){const seat=r.seats.find(s=>s.id===user.id);if(seat){Object.assign(seat,user);const p=r.round?.players.find(p=>p.id===user.id);if(p)Object.assign(p,{name:user.name,avatar:user.avatar});commit(r);}}}});
@@ -76,7 +77,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    const room=invite?rooms.get(invite.code):undefined,inviter=room?.seats.find(p=>p.id===invite!.inviter_id);
    if(!room||!inviter){fail(410,'This invitation is no longer available. Ask your friend for a new link.');return;}
    const current=accounts.session(req),member=room.seats.some(p=>p.id===current?.user.id);
-   res.end(JSON.stringify({code:room.code,name:room.name,inviter:{name:inviter.name,avatar:inviter.avatar||'/default-avatar.svg'},players:room.seats.map(p=>({name:p.name,avatar:p.avatar||'/default-avatar.svg',connected:online(p.id)})),status:room.round||room.party?'playing':room.seats.length>=10?'full':'waiting',canJoin:member||(!room.round&&!room.party&&room.seats.length<10)}));return;
+   res.end(JSON.stringify({code:room.code,name:room.name,inviter:{name:inviter.name,avatar:inviter.avatar||'/default-avatar.svg'},players:room.seats.map(p=>({name:p.name,avatar:p.avatar||'/default-avatar.svg',connected:online(p.id)})),status:room.round||room.party||room.pool?'playing':room.seats.length>=(room.game==='pool'?3:10)?'full':'waiting',canJoin:member||(!room.round&&!room.party&&!room.pool&&room.seats.length<(room.game==='pool'?3:10))}));return;
   }
   if(req.url!=='/dev/session'||req.method!=='POST'||!options.allowDevAuth||!origin||!options.allowedOrigins.includes(origin)){res.writeHead(404);res.end();return;}
   let text='';try{for await(const chunk of req){text+=chunk;if(text.length>160000)throw Error();}const input=JSON.parse(text);if(!validText(input.name,24))throw Error();const token=randomBytes(32).toString('base64url'),user={id:randomUUID(),name:input.name.trim(),avatar:avatar(input.avatar)};store.saveSession(hash(token),user);res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify({token,user}));}catch{res.writeHead(400);res.end();}
@@ -98,16 +99,22 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    if(!user)throw Error('Please sign in.');if(accountSessions.has(ws)&&!accounts.lookup(accountSessions.get(ws)!)){ws.close(1008,'Please sign in again.');throw Error('Please sign in again.');}const p=input.payload||{};
    if(input.type==='create'){
     if([...rooms.values()].some(r=>r.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');
-    if(!validText(p.name,40)||![5,7,9,10].includes(p.handSize)||(p.game!==undefined&&!['uno','likely'].includes(p.game)))throw Error('Check the room settings.');
+    if(!validText(p.name,40)||![5,7,9,10].includes(p.handSize)||(p.game!==undefined&&!['uno','likely','pool'].includes(p.game)))throw Error('Check the room settings.');
     let code='';do{code=Array.from({length:6},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(32)]).join('');}while(rooms.has(code));
     const room:Room={game:p.game||'uno',code,name:p.name.trim(),hostId:user.id,handSize:p.handSize,revision:0,seats:[{...user,ready:false}],wins:{},round:null,roundId:'',startedAt:0,message:null,event:null,played:{}};rooms.set(code,room);members.set(ws,code);commit(room);
    }else if(input.type==='join'){
     if(typeof p.code!=='string'||!/^[A-Z0-9]{6}$/.test(p.code))throw Error('Enter a six-character code.');const r=rooms.get(p.code);if(!r)throw Error('That room code was not found.');expireIdle(r);
     if([...rooms.values()].some(o=>o.code!==r.code&&o.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');
-    if(!r.seats.some(s=>s.id===user!.id)){if(r.round||r.party)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
+    if(!r.seats.some(s=>s.id===user!.id)){if(r.round||r.party||r.pool)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=(r.game==='pool'?3:10))throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
    }else{
     const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');expireIdle(r);
-    if(['likely-vote','likely-reveal','likely-next','likely-skip','likely-end','likely-lobby'].includes(input.type)){
+    if(['pool-shot','pool-place','pool-next','pool-lobby'].includes(input.type)){
+     const game=r.pool;if(!game)throw Error('This pool game is not running.');if(input.revision!==r.revision)throw Error('The table changed. Try again.');
+     if(input.type==='pool-shot'){r.pool=shootPool(game,user.id,p.angle,p.power);if(r.pool.winner){r.poolWins=r.poolWins||{};r.poolWins[r.pool.winner]=(r.poolWins[r.pool.winner]||0)+1;}}
+     else if(input.type==='pool-place')r.pool=placeCue(game,user.id,p.x,p.y);
+     else{if(r.hostId!==user.id||(!game.winner&&!game.draw)||Date.now()<poolBusyUntil(game))throw Error('The host can reopen the table after this round ends.');r.pool=null;r.seats.forEach(s=>s.ready=false);}
+     commit(r);
+    }else if(['likely-vote','likely-reveal','likely-next','likely-skip','likely-end','likely-lobby'].includes(input.type)){
      const game=r.party;if(!game)throw Error('This game is not running.');
      if(input.type==='likely-vote'){
       if(game.phase!=='vote'||p.questionId!==`${game.id}:${game.index}`)throw Error('This question has already moved on.');
@@ -144,8 +151,8 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     }else{
      if(input.revision!==r.revision)throw Error('The table changed. Try again.');
      if(input.type==='game-mode'){
-      if(r.hostId!==user.id||r.round||r.party)throw Error('Only the host can choose a game in the waiting room.');
-      if(!['uno','likely'].includes(p.game)||!Array.isArray(p.questions)||p.questions.length>10||p.questions.some((q:unknown)=>!validText(q,120)))throw Error('Add up to 10 questions, 120 characters each.');
+      if(r.hostId!==user.id||r.round||r.party||r.pool)throw Error('Only the host can choose a game in the waiting room.');
+      if(!['uno','likely','pool'].includes(p.game)||!Array.isArray(p.questions)||p.questions.length>10||p.questions.some((q:unknown)=>!validText(q,120)))throw Error('Add up to 10 questions, 120 characters each.');
       r.game=p.game;r.customQuestions=p.questions.map((q:string)=>q.trim());r.seats.forEach(s=>s.ready=false);commit(r);
      }else if(input.type==='likely-questions'){
       if(r.game!=='likely'||r.round||r.party)throw Error('Add questions in the voting waiting room.');
@@ -155,7 +162,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       if(r.hostId!==user.id||r.game!=='likely'||r.round||r.party)throw Error('Only the host can set topics before voting.');
       if(!Array.isArray(p.topics)||p.topics.length>LIKELY_TOPICS.length||p.topics.some((id:unknown)=>!LIKELY_TOPICS.some(t=>t.id===id)))throw Error('Choose valid topics.');
       r.likelyTopics=[...new Set(p.topics)] as string[];r.seats.forEach(s=>s.ready=false);commit(r);
-     }else if(input.type==='ready'){if(r.round||r.party)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
+     }else if(input.type==='ready'){if(r.round||r.party||r.pool)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
      else if(input.type==='open-seats'){
       if(r.hostId!==user.id)throw Error('Only the host can invite players between rounds.');
       if(!r.round?.winner)throw Error('Finish the current round before adding players.');
@@ -163,8 +170,8 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       clearTimeout(timers.get(r.code));timers.delete(r.code);commit(r);
      }
      else if(input.type==='start'){
-      if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.party||r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
-      r.expiredAt=undefined;if(r.game==='likely'){r.round=null;r.party=newLikely(fairQuestions(r.seats.map(s=>r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[]))),r.likelyTopics);r.party.voteDeadline=Date.now()+voteDuration;r.event=null;r.message=null;commit(r);schedule(r);}else{
+      if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.party||r.pool||r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
+      r.expiredAt=undefined;if(r.game==='pool'){if(r.seats.length!==3)throw Error('Pool needs exactly three ready players.');r.round=null;r.party=null;r.pool=newPool(r.seats.map(s=>s.id));r.message=null;commit(r);}else if(r.game==='likely'){r.round=null;r.party=newLikely(fairQuestions(r.seats.map(s=>r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[]))),r.likelyTopics);r.party.voteDeadline=Date.now()+voteDuration;r.event=null;r.message=null;commit(r);schedule(r);}else{
       r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);}
      }else if(input.type==='move'){
       if(!r.round||r.round.winner||r.round.players[r.round.active].id!==user.id)throw Error('Wait for your turn.');if(Date.now()<r.startedAt+3500)throw Error('The cards are still being dealt.');
@@ -172,7 +179,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       if(m.type==='play'&&(!Array.isArray(m.ids)||m.ids.length>108||m.ids.some((id:unknown)=>typeof id!=='string')||(m.color!==undefined&&!['red','blue','green','yellow'].includes(m.color))))throw Error('Invalid cards or color.');
       apply(r,user.id,m);
      }else if(input.type==='leave'){
-      const participants=[...r.seats];let result:any;
+      const participants=[...r.seats];let result:any;if(r.pool){const previous=r.pool.winner;r.pool=leavePool(r.pool,user.id);if(!previous&&r.pool.winner){r.poolWins=r.poolWins||{};r.poolWins[r.pool.winner]=(r.poolWins[r.pool.winner]||0)+1;}}
       if(r.round&&!r.round.winner){
        const activeId=r.round.players[r.round.active].id;r.round=leaveRound(r.round,user.id);if(activeId===user.id)r.turnDeadline=Date.now()+turnDuration;
        r.event=null;
@@ -182,7 +189,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
        }
       }else r.round=null;
       r.seats=r.seats.filter(s=>s.id!==user!.id);if(r.party)removeLikelyPlayer(r.party,user.id,r.seats.map(s=>s.id));if(r.hostId===user.id)r.hostId=r.seats[0]?.id||'';
-      if(!r.seats.length){r.round=null;r.party=null;}
+      if(!r.seats.length){r.round=null;r.party=null;r.pool=null;}
       for(const [socket,id]of users)if(id.id===user.id){members.delete(socket);send(socket,{type:'room',room:null});}
       commit(r,result);schedule(r);
       if(result)for(const [ws,u]of users)if(participants.some(p=>p.id===u.id))send(ws,{type:'profile-updated'});
