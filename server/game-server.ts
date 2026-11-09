@@ -1,4 +1,5 @@
-import {newLikely,revealLikely,likelyView,removeLikelyPlayer,type LikelyState} from './likely';
+import {LIKELY_TOPICS} from '../src/data/likelyTopics';
+import {fairQuestions,newLikely,revealLikely,likelyView,removeLikelyPlayer,type LikelyState} from './likely';
 import {createServer} from 'node:http';
 import {randomBytes,randomInt,createHash,randomUUID} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
@@ -8,29 +9,37 @@ import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round
 import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
 
 type User={id:string;name:string;avatar:string};
-type Room={game?:'uno'|'likely';customQuestions?:string[];party?:LikelyState|null;code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
+type Room={lastActivityAt?:number;expiredAt?:number;likelyTopics?:string[];questionsByPlayer?:Record<string,string[]>;game?:'uno'|'likely';customQuestions?:string[];party?:LikelyState|null;code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const validText=(x:unknown,max:number)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
 function avatar(x:unknown){return typeof x==='string'&&x.length<=150000&&(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x)||/^https:\/\//.test(x))?x:'';}
-export function createGameServer(options:{databasePath:string;allowDevAuth?:boolean;allowedOrigins:string[];secureCookies?:boolean;turnDurationMs?:number}){
+export function createGameServer(options:{databasePath:string;allowDevAuth?:boolean;allowedOrigins:string[];secureCookies?:boolean;turnDurationMs?:number;likelyVoteDurationMs?:number;inactivityMs?:number}){
  if(process.env.NODE_ENV==='production'&&options.allowDevAuth)throw new Error('Development sign-in cannot run in production.');
  const store=new Store(options.databasePath),rooms=new Map<string,Room>(store.rooms().map((r:Room)=>[r.code,r]));
  const users=new Map<WebSocket,User>(),members=new Map<WebSocket,string>(),timers=new Map<string,ReturnType<typeof setTimeout>>();
  const turnDuration=options.turnDurationMs??15000;
+ const voteDuration=options.likelyVoteDurationMs??15000;
+ const inactivityMs=options.inactivityMs??10*60*1000;
+ function expireIdle(r:Room){if(!r.lastActivityAt)r.lastActivityAt=r.message?.at||r.startedAt||Date.now();if(!(r.round||r.party)||Date.now()-r.lastActivityAt<inactivityMs)return false;
+  clearTimeout(timers.get(r.code));timers.delete(r.code);r.round=null;r.party=null;r.turnDeadline=undefined;r.winningPlay=undefined;r.event=null;r.message=null;r.expiredAt=Date.now();r.seats.forEach(s=>s.ready=false);commit(r);return true;
+ }
+
  const accountSessions=new Map<WebSocket,string>();
  const lastSlaps=new Map<string,number>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
- function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {game:r.game||'uno',customQuestions:id===r.hostId?r.customQuestions||[]:undefined,party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
+ function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {expiredAt:r.expiredAt,game:r.game||'uno',customQuestions:r.questionsByPlayer?.[id]||(id===r.hostId?r.customQuestions||[]:[]),likelyTopics:r.likelyTopics||[],questionCounts:Object.fromEntries(r.seats.map(s=>[s.id,(r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[])).length])),party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
  function broadcast(r:Room){for(const [ws,code]of members)if(code===r.code){const u=users.get(ws);if(u)send(ws,{type:'room',room:view(r,u.id)});}}
  function commit(r:Room,result?:any){r.revision++;if(result)store.saveResult(r,r.roundId,result);else store.save(r);broadcast(r);}
  const accounts=createAccounts(store,{secure:options.secureCookies??process.env.NODE_ENV==='production',origins:options.allowedOrigins,onLogout:(id,sessionHash)=>{for(const [ws,u]of users)if(u.id===id&&(!sessionHash||accountSessions.get(ws)===sessionHash))ws.close(1008,'Please sign in again.');},onProfile:user=>{for(const [ws,u]of users)if(u.id===user.id)users.set(ws,user);for(const r of rooms.values()){const seat=r.seats.find(s=>s.id===user.id);if(seat){Object.assign(seat,user);const p=r.round?.players.find(p=>p.id===user.id);if(p)Object.assign(p,{name:user.name,avatar:user.avatar});commit(r);}}}});
  function apply(r:Room,actorId:string,move:Move){const before=r.round!,next=moveRound(before,move);if(next===before)throw new Error('That move is not available.');r.round=next;if(next.turns!==before.turns||next.active!==before.active)r.turnDeadline=Date.now()+turnDuration;const count=next.players[before.active].hand.length-before.players[before.active].hand.length;r.event={id:randomUUID(),actorId,kind:move.type,count:Math.max(0,count),value:move.type==='play'?next.discard.at(-1)!.value:undefined};if(move.type==='play')r.played[actorId]=(r.played[actorId]||0)+move.ids.length;let result:any;if(next.winner){r.lastWinnerId=next.winner;if(move.type==='play')r.winningPlay={actorId,name:before.players[before.active].name,cards:move.ids.map(id=>before.players[before.active].hand.find(card=>card.id===id)!),color:next.color,at:Date.now()};r.wins[next.winner]=(r.wins[next.winner]||0)+1;result={id:r.roundId,room_code:r.code,table_name:r.name,winner_id:next.winner,finished_at:new Date().toISOString(),players:r.seats.map(p=>({user_id:p.id,cards_played:r.played[p.id]||0,turns:next.turns}))};}commit(r,result);if(result)for(const [ws,user]of users)if(result.players.some((p:any)=>p.user_id===user.id))send(ws,{type:'profile-updated'});schedule(r);}
  function schedule(r:Room){
-  clearTimeout(timers.get(r.code));timers.delete(r.code);if(!r.round||r.round.winner)return;
+  clearTimeout(timers.get(r.code));timers.delete(r.code);
+  if(r.party){const game=r.party;if(game.phase!=='vote')return;if(!game.voteDeadline){game.voteDeadline=Date.now()+voteDuration;store.save(r);}timers.set(r.code,setTimeout(()=>{timers.delete(r.code);if(r.party!==game||game.phase!=='vote'||expireIdle(r))return;for(const seat of r.seats)if(!Object.hasOwn(game.votes,seat.id))game.votes[seat.id]=null;revealLikely(game);commit(r);},Math.max(0,game.voteDeadline-Date.now())));return;}
+  if(!r.round||r.round.winner)return;
   if(!r.turnDeadline){r.turnDeadline=Math.max(Date.now(),r.startedAt+3500)+turnDuration;store.save(r);}
   const forced=mustTakeDrawStack(r.round),wait=forced?450:Math.max(0,r.turnDeadline-Date.now());
-  timers.set(r.code,setTimeout(()=>{timers.delete(r.code);if(!r.round||r.round.winner)return;apply(r,r.round.players[r.round.active].id,forced?{type:'draw'}:automaticMove(r.round));},wait));
+  timers.set(r.code,setTimeout(()=>{timers.delete(r.code);if(!r.round||r.round.winner||expireIdle(r))return;apply(r,r.round.players[r.round.active].id,forced?{type:'draw'}:automaticMove(r.round));},wait));
  }
  const http=createServer(async(req,res)=>{
   const origin=req.headers.origin;if(origin&&options.allowedOrigins.includes(origin)){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Headers','Content-Type');}
@@ -84,7 +93,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     if(user)throw Error('Already signed in.');const token=input.payload?.token;if(!validText(token,12000))throw Error('Please sign in.');
     const ticket=accounts.consume(token);if(ticket){user=ticket.user;accountSessions.set(ws,ticket.hash);}else if(options.allowDevAuth)user=store.session(hash(token));
     if(!user)throw Error('Please sign in again.');users.set(ws,user);clearTimeout(deadline);
-    const room=[...rooms.values()].find(r=>r.seats.some(s=>s.id===user!.id));if(room){members.set(ws,room.code);broadcast(room);}send(ws,{type:'reply',id:input.id,ok:true});return;
+    const room=[...rooms.values()].find(r=>r.seats.some(s=>s.id===user!.id));if(room){expireIdle(room);members.set(ws,room.code);broadcast(room);}send(ws,{type:'reply',id:input.id,ok:true});return;
    }
    if(!user)throw Error('Please sign in.');if(accountSessions.has(ws)&&!accounts.lookup(accountSessions.get(ws)!)){ws.close(1008,'Please sign in again.');throw Error('Please sign in again.');}const p=input.payload||{};
    if(input.type==='create'){
@@ -93,11 +102,11 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
     let code='';do{code=Array.from({length:6},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomInt(32)]).join('');}while(rooms.has(code));
     const room:Room={game:p.game||'uno',code,name:p.name.trim(),hostId:user.id,handSize:p.handSize,revision:0,seats:[{...user,ready:false}],wins:{},round:null,roundId:'',startedAt:0,message:null,event:null,played:{}};rooms.set(code,room);members.set(ws,code);commit(room);
    }else if(input.type==='join'){
-    if(typeof p.code!=='string'||!/^[A-Z0-9]{6}$/.test(p.code))throw Error('Enter a six-character code.');const r=rooms.get(p.code);if(!r)throw Error('That room code was not found.');
+    if(typeof p.code!=='string'||!/^[A-Z0-9]{6}$/.test(p.code))throw Error('Enter a six-character code.');const r=rooms.get(p.code);if(!r)throw Error('That room code was not found.');expireIdle(r);
     if([...rooms.values()].some(o=>o.code!==r.code&&o.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');
     if(!r.seats.some(s=>s.id===user!.id)){if(r.round||r.party)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
    }else{
-    const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');
+    const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');expireIdle(r);
     if(['likely-vote','likely-reveal','likely-next','likely-skip','likely-end','likely-lobby'].includes(input.type)){
      const game=r.party;if(!game)throw Error('This game is not running.');
      if(input.type==='likely-vote'){
@@ -112,9 +121,9 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       else if(input.type==='likely-end')game.phase='finished';
       else if(input.type==='likely-reveal'){if(game.phase!=='vote')throw Error('The results are already revealed.');revealLikely(game);}
       else if(input.type==='likely-skip'){if(game.phase!=='vote')throw Error('Move to the next question instead.');game.skipped=true;game.results={};game.phase='reveal';}
-      else{if(game.phase!=='reveal')throw Error('Reveal the votes first.');if(game.index+1>=game.questions.length)game.phase='finished';else{game.index++;game.phase='vote';game.votes={};game.results={};game.skipped=false;}}
+      else{if(game.phase!=='reveal')throw Error('Reveal the votes first.');if(game.index+1>=game.questions.length)game.phase='finished';else{game.index++;game.phase='vote';game.votes={};game.results={};game.skipped=false;game.voteDeadline=Date.now()+voteDuration;}}
      }
-     commit(r);
+     commit(r);schedule(r);
     }else if(input.type==='slap'){
      const target=r.seats.find(s=>s.id===p.targetId);if((!r.round&&!r.party)||(r.round?.winner)||(r.party?.phase==='finished')||!target||target.id===user.id)throw Error('Choose another player at your table.');
      if(Date.now()-(lastSlaps.get(user.id)||0)<2000)throw Error('Give them a second to recover!');lastSlaps.set(user.id,Date.now());
@@ -138,6 +147,14 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       if(r.hostId!==user.id||r.round||r.party)throw Error('Only the host can choose a game in the waiting room.');
       if(!['uno','likely'].includes(p.game)||!Array.isArray(p.questions)||p.questions.length>10||p.questions.some((q:unknown)=>!validText(q,120)))throw Error('Add up to 10 questions, 120 characters each.');
       r.game=p.game;r.customQuestions=p.questions.map((q:string)=>q.trim());r.seats.forEach(s=>s.ready=false);commit(r);
+     }else if(input.type==='likely-questions'){
+      if(r.game!=='likely'||r.round||r.party)throw Error('Add questions in the voting waiting room.');
+      if(!Array.isArray(p.questions)||p.questions.length>10||p.questions.some((q:unknown)=>!validText(q,120)))throw Error('Add up to 10 questions, 120 characters each.');
+      r.questionsByPlayer={...r.questionsByPlayer,[user.id]:[...new Set((p.questions as string[]).map(q=>q.trim()))]};r.seats.forEach(s=>s.ready=false);commit(r);
+     }else if(input.type==='likely-topics'){
+      if(r.hostId!==user.id||r.game!=='likely'||r.round||r.party)throw Error('Only the host can set topics before voting.');
+      if(!Array.isArray(p.topics)||p.topics.length>LIKELY_TOPICS.length||p.topics.some((id:unknown)=>!LIKELY_TOPICS.some(t=>t.id===id)))throw Error('Choose valid topics.');
+      r.likelyTopics=[...new Set(p.topics)] as string[];r.seats.forEach(s=>s.ready=false);commit(r);
      }else if(input.type==='ready'){if(r.round||r.party)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
      else if(input.type==='open-seats'){
       if(r.hostId!==user.id)throw Error('Only the host can invite players between rounds.');
@@ -147,7 +164,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
      }
      else if(input.type==='start'){
       if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.party||r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
-      if(r.game==='likely'){r.round=null;r.party=newLikely(r.customQuestions);r.event=null;r.message=null;commit(r);}else{
+      r.expiredAt=undefined;if(r.game==='likely'){r.round=null;r.party=newLikely(fairQuestions(r.seats.map(s=>r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[]))),r.likelyTopics);r.party.voteDeadline=Date.now()+voteDuration;r.event=null;r.message=null;commit(r);schedule(r);}else{
       r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);}
      }else if(input.type==='move'){
       if(!r.round||r.round.winner||r.round.players[r.round.active].id!==user.id)throw Error('Wait for your turn.');if(Date.now()<r.startedAt+3500)throw Error('The cards are still being dealt.');
@@ -172,11 +189,13 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
      }else throw Error('Unknown request.');
     }
    }
+   const activeRoom=rooms.get(members.get(ws)||'');if(activeRoom){activeRoom.lastActivityAt=Date.now();store.save(activeRoom);}
    send(ws,{type:'reply',id:input.id,ok:true});
   }catch(e){send(ws,{type:'reply',id:input?.id,ok:false,error:e instanceof Error?e.message:'Could not complete that action.'});}finally{working=false;}});
   ws.on('close',()=>{clearTimeout(deadline);const code=members.get(ws);users.delete(ws);members.delete(ws);accountSessions.delete(ws);const r=rooms.get(code||'');if(r)broadcast(r);});
  });
- for(const r of rooms.values())schedule(r);
+ for(const r of rooms.values()){if(!expireIdle(r))schedule(r);}
+ const idleSweep=setInterval(()=>{for(const r of rooms.values())expireIdle(r);},Math.min(1000,inactivityMs));idleSweep.unref();
  const heartbeat=setInterval(()=>{for(const ws of wss.clients){if(accountSessions.has(ws)&&!accounts.lookup(accountSessions.get(ws)!)){ws.close(1008,'Please sign in again.');continue;}const live=ws as WebSocket&{alive?:boolean};if(live.alive===false){ws.terminate();continue;}live.alive=false;ws.ping();}},20000);heartbeat.unref();
- return {http,wss,async close(){accounts.close();clearInterval(heartbeat);for(const t of timers.values())clearTimeout(t);for(const ws of wss.clients)ws.terminate();await new Promise<void>(resolve=>wss.close(()=>resolve()));await new Promise<void>(resolve=>http.close(()=>resolve()));store.close();}};
+ return {http,wss,async close(){accounts.close();clearInterval(heartbeat);clearInterval(idleSweep);for(const t of timers.values())clearTimeout(t);for(const ws of wss.clients)ws.terminate();await new Promise<void>(resolve=>wss.close(()=>resolve()));await new Promise<void>(resolve=>http.close(()=>resolve()));store.close();}};
 }

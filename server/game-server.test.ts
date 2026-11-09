@@ -8,7 +8,7 @@ import {WebSocket} from 'ws';
 import {createGameServer} from './game-server';
 import type {RoomView} from '../src/online/protocol';
 const origin='http://test';
-async function launch(path=':memory:',turnDurationMs=15000){const server=createGameServer({databasePath:path,allowDevAuth:true,allowedOrigins:[origin],turnDurationMs});server.http.listen(0,'127.0.0.1');await once(server.http,'listening');const port=(server.http.address() as any).port;return {server,url:`http://127.0.0.1:${port}`};}
+async function launch(path=':memory:',turnDurationMs=15000,inactivityMs?:number,likelyVoteDurationMs?:number){const server=createGameServer({databasePath:path,allowDevAuth:true,allowedOrigins:[origin],turnDurationMs,inactivityMs,likelyVoteDurationMs});server.http.listen(0,'127.0.0.1');await once(server.http,'listening');const port=(server.http.address() as any).port;return {server,url:`http://127.0.0.1:${port}`};}
 async function player(url:string,name:string,token?:string){if(!token){const res=await fetch(url+'/dev/session',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:JSON.stringify({name})});token=(await res.json()).token;}const ws=new WebSocket(url.replace('http','ws'),{origin});await once(ws,'open');let room:RoomView|null=null;const pending=new Map<string,{resolve:()=>void;reject:(e:Error)=>void}>();ws.on('message',bytes=>{const m=JSON.parse(bytes.toString());if(m.type==='room')room=m.room;if(m.type==='reply'){const cb=pending.get(m.id)!;pending.delete(m.id);m.ok?cb.resolve():cb.reject(Error(m.error));}});async function send(type:string,payload:unknown={},revision=room?.revision){await new Promise<void>((resolve,reject)=>{const id=crypto.randomUUID();pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,type,payload,revision}));});}await send('auth',{token});return {ws,token,send,get room(){return room;}};}
 const delay=(n=25)=>new Promise(r=>setTimeout(r,n));
 test('two separate players: private hands, synchronized ready/turns/chat, rejected invalid and stale moves',async()=>{const {server,url}=await launch();const a=await player(url,'Naomi'),b=await player(url,'Friend');try{
@@ -222,3 +222,34 @@ test('dashboard game selection creates the requested playable room and rejects c
 
 
 test('upgraded room setup accepts a ten-card starting hand',async()=>{const {server,url}=await launch();const a=await player(url,'Ten-card Host'),b=await player(url,'Ten-card Friend');try{await a.send('create',{name:'Ten-card game',handSize:10,game:'uno'});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();assert.equal(a.room!.handSize,10);assert.equal(a.room!.round!.hand.length,10);assert.equal(b.room!.round!.hand.length,10);}finally{a.ws.terminate();b.ws.terminate();await server.close();}});
+test('every voting player saves private questions, host selects topics, changes reset readiness and contributions persist',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'likely-topics-')),db=join(dir,'rooms.sqlite');let runtime=await launch(db);let a=await player(runtime.url,'Host'),b=await player(runtime.url,'Friend');
+ try{
+ await a.send('create',{name:'Topics',game:'likely',handSize:7});await b.send('join',{code:a.room!.code});await delay();
+ await a.send('likely-questions',{questions:['Who always loses the boarding pass?']});await delay();
+ await b.send('likely-questions',{questions:['Who sings every Lil Wayne ad-lib?']});await delay();
+ assert.deepEqual(a.room!.customQuestions,['Who always loses the boarding pass?']);assert.deepEqual(b.room!.customQuestions,['Who sings every Lil Wayne ad-lib?']);assert.equal(Object.values(a.room!.questionCounts!).reduce((s,n)=>s+n,0),2);
+ await assert.rejects(b.send('likely-topics',{topics:['food']}),/host/);await assert.rejects(a.send('likely-topics',{topics:['invalid']}),/valid/);
+ await a.send('ready',{ready:true});await delay();await a.send('likely-topics',{topics:['airports','artists']});await delay();assert(a.room!.seats.every(p=>!p.ready));
+ const tokenA=a.token,tokenB=b.token;a.ws.terminate();b.ws.terminate();await runtime.server.close();runtime=await launch(db);a=await player(runtime.url,'Host',tokenA);b=await player(runtime.url,'Friend',tokenB);await delay();assert.deepEqual(b.room!.customQuestions,['Who sings every Lil Wayne ad-lib?']);assert.deepEqual(a.room!.likelyTopics,['airports','artists']);
+ await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();
+ const seen:string[]=[];for(let i=0;i<10;i++){seen.push(a.room!.party!.question);await a.send('likely-reveal',{questionId:a.room!.party!.questionId});await delay();await a.send('likely-next',{questionId:a.room!.party!.questionId});await delay();}
+ assert(seen.includes('Who always loses the boarding pass?'));assert(seen.includes('Who sings every Lil Wayne ad-lib?'));assert.equal(new Set(seen).size,10);
+ await assert.rejects(b.send('likely-questions',{questions:['Too late']}),/waiting/);
+ }finally{a.ws.terminate();b.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('idle UNO rounds expire, real messages extend activity, and reconnect cannot resurrect an expired saved round',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-idle-')),db=join(dir,'rooms.sqlite');let runtime=await launch(db,15000,300);let a=await player(runtime.url,'Host'),b=await player(runtime.url,'Friend');
+ try{await a.send('create',{name:'Idle table',handSize:7});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay(180);await b.send('message',{text:'Still here',effect:'normal'});await delay(180);assert(a.room!.round,'a real message keeps the round active');
+ const tokenA=a.token,tokenB=b.token;a.ws.terminate();b.ws.terminate();await runtime.server.close();await delay(180);runtime=await launch(db,15000,300);a=await player(runtime.url,'Host',tokenA);b=await player(runtime.url,'Friend',tokenB);await delay();assert.equal(a.room!.round,null);assert(a.room!.expiredAt);assert(a.room!.seats.every(p=>!p.ready));assert.deepEqual(a.room!.wins,{});
+ }finally{a.ws.terminate();b.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
+test('idle voting game ends without granting extra results',async()=>{const {server,url}=await launch(':memory:',15000,180);const a=await player(url,'Host'),b=await player(url,'Friend');try{await a.send('create',{name:'Idle votes',handSize:7,game:'likely'});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay(420);assert.equal(a.room!.party,null);assert(a.room!.expiredAt);assert.deepEqual(a.room!.wins,{});}finally{a.ws.terminate();b.ws.terminate();await server.close();}});
+
+test('shared voting countdown reveals missing votes as passes and does not restart after reconnect',async()=>{const dir=mkdtempSync(join(tmpdir(),'likely-clock-')),db=join(dir,'rooms.sqlite');let runtime=await launch(db,15000,600000,500);let a=await player(runtime.url,'Host'),b=await player(runtime.url,'Friend');try{
+ await a.send('create',{name:'Clock test',game:'likely',handSize:7});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await a.send('start');await delay();const deadline=a.room!.party!.voteDeadline;assert.equal(deadline,b.room!.party!.voteDeadline);
+ await a.send('likely-vote',{questionId:a.room!.party!.questionId,targetId:b.room!.you});await delay();const tokenA=a.token,tokenB=b.token;a.ws.terminate();b.ws.terminate();await runtime.server.close();await delay(520);runtime=await launch(db,15000,600000,500);a=await player(runtime.url,'Host',tokenA);b=await player(runtime.url,'Friend',tokenB);await delay(50);
+ assert.equal(a.room!.party!.phase,'reveal');assert.equal(a.room!.party!.results[b.room!.you],1);assert(a.room!.party!.submitted.includes(b.room!.you));assert.equal(b.room!.party!.yourVote,null);assert.equal(a.room!.party!.voteDeadline,deadline);
+ await a.send('likely-next',{questionId:a.room!.party!.questionId});await delay();assert.equal(a.room!.party!.phase,'vote');assert(a.room!.party!.voteDeadline!>deadline!);
+ }finally{a.ws.terminate();b.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}});

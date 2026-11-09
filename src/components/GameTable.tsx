@@ -1,8 +1,7 @@
+import {TableChat} from './TableChat';
 import {animateProfileSlap} from '../utils/slap';
 import {VoiceBubble} from './VoiceBubble';
-import {VoiceRecorder} from './VoiceRecorder';
 import {ChatButton} from './ChatButton';
-import {ChatHistory} from './ChatHistory';
 import {createPortal} from 'react-dom';
 import {TurnDirections} from './TurnDirections';
 import type {RoomView,WinningPlay,ChatMessage,RoomMessage} from '../online/protocol';
@@ -91,7 +90,6 @@ export const GameTable: React.FC<GameTableProps> = ({
   const [reaction,setReaction]=useState('');
   const [chatDraft,setChatDraft]=useState('');
   const [reactionVersion,setReactionVersion]=useState(0);
-  const [sendEffect,setSendEffect]=useState<'normal'|'slam'|'echo'>('normal');
   const [messageEffect,setMessageEffect]=useState<{type:'slam'|'echo';text:string;id:number;senderId:string}|null>(null);
   const [botMessage,setBotMessage]=useState<{senderId:string;text:string;id:number}|null>(null);
   const demoBotIndex=useRef(0);
@@ -159,13 +157,13 @@ export const GameTable: React.FC<GameTableProps> = ({
   const secondsLeft=Math.min(15,Math.max(0,Math.ceil((deadline-clockNow)/1000)));
   useEffect(()=>{if(online||paused||drawing||phase!=='playing'||round.winner||!localDeadline)return;const timer=setTimeout(()=>{setPendingWildCard(null);setBatch([]);act(automaticMove(liveRound.current));},Math.max(0,localDeadline-Date.now()));return()=>clearTimeout(timer);},[online?.room.code,paused,drawing,phase,round,localDeadline]);
   useLayoutEffect(()=>{
-    if(!showChatMenu)return;
+    if(!showChatMenu&&!showChatHistory)return;
     const html=document.documentElement;html.style.setProperty('--keyboard-board-height',`${rootRef.current?.getBoundingClientRect().height||window.innerHeight}px`);
     const update=()=>setChatViewport({top:window.visualViewport?.offsetTop||0,height:window.visualViewport?.height||window.innerHeight});
     update();window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);
-    chatInput.current?.focus({preventScroll:true});
+    if(showChatMenu&&!showChatHistory)chatInput.current?.focus({preventScroll:true});
     return()=>{chatInput.current?.blur();html.style.removeProperty('--keyboard-board-height');window.visualViewport?.removeEventListener('resize',update);window.visualViewport?.removeEventListener('scroll',update);};
-  },[showChatMenu]);
+  },[showChatMenu,showChatHistory]);
   const liveRound=useRef(round);liveRound.current=round;
   const busyRef=useRef(false);
   const [receivingCards,setReceivingCards]=useState<Record<string,number>>({});
@@ -241,25 +239,16 @@ export const GameTable: React.FC<GameTableProps> = ({
   const sendVoice=async(audio:string,duration:number)=>{
     if(online)await online.send('voice',{audio,duration});
     else{const message:ChatMessage={id:crypto.randomUUID(),senderId:'player_human',senderName:userName,text:'Voice message',effect:'normal',at:Date.now(),voice:{url:audio,duration}};setLocalMessages(old=>[...old,message].slice(-200));enqueueVoice(message);}
-    setShowChatMenu(false);
+    setShowChatMenu(false);setShowChatHistory(false);
   };
-  const handleSendReaction=(text:string)=>{
+  const handleSendReaction=async(text:string,effect:'normal'|'slam'|'echo'='normal')=>{
     const message=text.trim().slice(0,120);if(!message)return;
     chatInput.current?.blur();
-    if(online){void online.send('message',{text:message,effect:sendEffect}).then(()=>{setChatDraft('');setShowChatMenu(false);setSendEffect('normal');}).catch(()=>{});return;}
-    setLocalMessages(previous=>[...previous,{id:crypto.randomUUID(),senderId:'player_human',senderName:userName,text:message,effect:sendEffect,at:Date.now()}].slice(-200));
+    if(online){await online.send('message',{text:message,effect});setChatDraft('');setShowChatMenu(false);setShowChatHistory(false);return;}
+    setLocalMessages(previous=>[...previous,{id:crypto.randomUUID(),senderId:'player_human',senderName:userName,text:message,effect:effect,at:Date.now()}].slice(-200));
     setReaction(message);setReactionVersion(n=>n+1);
-    if(sendEffect!=='normal')setMessageEffect({type:sendEffect,text:message,id:Date.now(),senderId:'player_human'});
-    setChatDraft('');setShowChatMenu(false);setSendEffect('normal');soundFX.playTap();
-  };
-  const previewBotMessage=(effect:'normal'|'slam'|'echo')=>{
-    const bots=players.filter(player=>player.type==='bot');
-    const bot=bots[demoBotIndex.current++%bots.length];if(!bot)return;
-    const text=chatDraft.trim().slice(0,120)||(effect==='slam'?'Not today! 💥':effect==='echo'?'😂😂😂':'Your turn 👀');
-    setLocalMessages(previous=>[...previous,{id:crypto.randomUUID(),senderId:bot.id,senderName:bot.name,text,effect,at:Date.now()}].slice(-200));
-    setBotMessage({senderId:bot.id,text,id:Date.now()});
-    setMessageEffect(effect==='normal'?null:{type:effect,text,id:Date.now(),senderId:bot.id});
-    setShowChatMenu(false);setChatDraft('');soundFX.playTap();
+    if(effect!=='normal')setMessageEffect({type:effect,text:message,id:Date.now(),senderId:'player_human'});
+    setChatDraft('');setShowChatMenu(false);setShowChatHistory(false);soundFX.playTap();
   };
   useEffect(()=>{
     if(!messageEffect)return;
@@ -415,9 +404,9 @@ export const GameTable: React.FC<GameTableProps> = ({
             {/* Quick chat toggle */}
             <div className="relative">
               <ChatButton expanded={showChatMenu||showChatHistory} onCompose={()=>setShowChatMenu(!showChatMenu)} onHistory={()=>{chatInput.current?.blur();setShowChatMenu(false);setShowChatHistory(true);}}/>
-              {showChatHistory&&createPortal(<ChatHistory messages={online?.room.messages||localMessages} seats={online?.room.seats||players} selfId={online?.room.you||'player_human'} onClose={()=>setShowChatHistory(false)}/>,document.body)}
 
-              {showChatMenu && createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget)setShowChatMenu(false);}}><section role="dialog" aria-modal="true" className="game-chat-composer" aria-label="Message or emoji" onKeyDown={e=>{if(e.key==='Escape')setShowChatMenu(false);}}><div className="chat-composer-heading"><strong>Say something</strong><button type="button" className="chat-history-shortcut" aria-label="View chat history" onClick={()=>{setShowChatMenu(false);setShowChatHistory(true);}}>History</button><button type="button" aria-label="Close chat" onClick={()=>setShowChatMenu(false)}><X size={16}/></button></div><div className="chat-emoji-options">{['😂','😭','😏','👀','🔥','💅','❤️','👏','😡','🖕'].map(emoji=><button key={emoji} type="button" aria-label={`Send ${emoji}`} onClick={()=>handleSendReaction(emoji)}>{emoji}</button>)}</div><div className="send-effect-options" role="group" aria-label="Message effect">{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" aria-pressed={sendEffect===effect} onClick={()=>setSendEffect(effect)}>{effect==='normal'?'Normal':effect==='slam'?'💥 Slam':'✨ Echo'}</button>)}</div><form onSubmit={e=>{e.preventDefault();handleSendReaction(chatDraft);}}><input ref={chatInput} value={chatDraft} onChange={e=>setChatDraft(e.target.value)} maxLength={120} aria-label="Your message" placeholder="Message or any emoji…" autoComplete="off" enterKeyHint="send"/><VoiceRecorder onSend={sendVoice}/><button type="submit" aria-label="Send message" disabled={!chatDraft.trim()}><Send size={18}/></button></form>{!online&&process.env.NODE_ENV==='development'&&<div className="bot-chat-preview"><small>Try a bot message</small><div>{(['normal','slam','echo'] as const).map(effect=><button key={effect} type="button" onClick={()=>previewBotMessage(effect)}>Bot: {effect==='normal'?'Normal':effect==='slam'?'Slam':'Echo'}</button>)}</div></div>}</section></div>,document.body)}
+
+              {(showChatMenu||showChatHistory)&&createPortal(<div className="chat-compose-overlay" style={{top:chatViewport.top,height:chatViewport.height}} onPointerDown={e=>{if(e.target===e.currentTarget){setShowChatMenu(false);setShowChatHistory(false);}}}><TableChat messages={online?.room.messages||localMessages} seats={online?.room.seats||players} selfId={online?.room.you||'player_human'} history={showChatHistory} onHistory={setShowChatHistory} onClose={()=>{setShowChatMenu(false);setShowChatHistory(false);}} draft={chatDraft} onDraft={setChatDraft} inputRef={chatInput} onSend={handleSendReaction} onVoice={sendVoice}/></div>,document.body)}
             </div>
 
             <button type="button" className="skip-turn-button" onClick={handleSkipTurn} disabled={!isHumanTurn||drawing||paused||!!pendingWildCard||phase!=='playing'||(!round.drawnCardId&&!round.pending)} aria-label={round.pending?`Skip stacking and draw ${round.pending} cards`:'Skip playing the drawn card'}>SKIP</button>

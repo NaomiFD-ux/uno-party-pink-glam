@@ -33,7 +33,7 @@ export type PlayDirection = 1 | -1; // 1 = clockwise, -1 = counter-clockwise
 
 export interface GameSettings {
   fullChatEffects?: boolean;
-  tableFelt: 'berry' | 'ruby' | 'emerald' | 'midnight';
+  tableFelt: 'berry' | 'ruby' | 'emerald' | 'midnight' | 'lavender';
   cardBack: 'pink_star' | 'diamond_glam' | 'leopard_chic' | 'gold_velvet';
   stackDraws: boolean;
   jumpIn: boolean;

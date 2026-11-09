@@ -12,7 +12,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#fff5f9}bod
 <script>
 document.querySelector('iframe').src=['127.0.0.1','localhost'].includes(location.hostname)?'/table-preview?screen='+encodeURIComponent(new URLSearchParams(location.search).get('screen')||'waiting'):'/';
 const phone=document.querySelector('.phone');
-function fit(){const scale=Math.min(1,innerWidth/390,innerHeight/844);phone.style.transform=`scale(${scale})`;phone.style.transformOrigin='center';}
+function fit(){const scale=Math.min(1,innerWidth/390,innerHeight/844);phone.style.width=`${390*scale}px`;phone.style.height=`${844*scale}px`;const frame=phone.querySelector('iframe');frame.style.transform=`scale(${scale})`;frame.style.transformOrigin='top left';}
 addEventListener('resize',fit);fit();
 </script>
 </body></html>

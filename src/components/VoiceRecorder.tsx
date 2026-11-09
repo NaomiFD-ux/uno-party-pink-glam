@@ -1,13 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
-import {Mic,Send,Trash2} from 'lucide-react';
+import {Mic,Square,Send,Trash2} from 'lucide-react';
 export function VoiceRecorder({onSend}:{onSend:(audio:string,duration:number)=>Promise<void>}){
- const [state,setState]=useState<'idle'|'recording'|'preview'|'sending'>('idle'),[clip,setClip]=useState(''),[seconds,setSeconds]=useState(0),[error,setError]=useState('');
+ const [state,setState]=useState<'idle'|'starting'|'recording'|'preview'|'sending'>('idle'),[clip,setClip]=useState(''),[seconds,setSeconds]=useState(0),[error,setError]=useState('');
  const recorder=useRef<MediaRecorder|null>(null),stream=useRef<MediaStream|null>(null),timer=useRef<ReturnType<typeof setInterval>|null>(null),started=useRef(0),held=useRef(false),alive=useRef(true),busy=useRef(false);
  const cleanup=()=>{if(timer.current)clearInterval(timer.current);timer.current=null;stream.current?.getTracks().forEach(t=>t.stop());stream.current=null;};
  const stop=()=>{held.current=false;if(recorder.current?.state==='recording')recorder.current.stop();};
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;held.current=false;stop();cleanup();};},[]);
  async function start(){
-  if(busy.current||state!=='idle')return;busy.current=true;held.current=true;setError('');
+  if(busy.current||state!=='idle')return;busy.current=true;held.current=true;setState('starting');setError('');
   try{
    if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined')throw Error('Voice recording is not supported in this browser. Try Safari over HTTPS.');
    const input=await navigator.mediaDevices.getUserMedia({audio:true});stream.current=input;
@@ -21,8 +21,9 @@ export function VoiceRecorder({onSend}:{onSend:(audio:string,duration:number)=>P
   }catch(e){cleanup();if(alive.current){setState('idle');setError(e instanceof Error&&e.name==='NotAllowedError'?'Allow microphone access to record a voice message.':e instanceof Error?e.message:'Could not start the microphone.');}}finally{busy.current=false;}
  }
  return <>
-  <button type="button" className={`voice-record-button ${state==='recording'?'is-recording':''}`} aria-label={state==='recording'?'Release to preview recording':'Hold to record voice message'} title="Hold to record · 30 seconds max" disabled={state==='preview'||state==='sending'} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();e.currentTarget.setPointerCapture(e.pointerId);void start();}} onPointerUp={stop} onPointerCancel={stop} onLostPointerCapture={stop} onContextMenu={e=>e.preventDefault()} onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();void start();}}} onKeyUp={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();stop();}}}><Mic size={18}/></button>
-  {state==='recording'&&<div className="voice-preview" role="status">🔴 Recording {Math.ceil(seconds)} / 30s · Release to preview</div>}
+  <button type="button" className={`voice-record-button ${state==='recording'?'is-recording':''}`} aria-label={state==='recording'?'Stop recording and preview':state==='starting'?'Opening microphone':'Start voice recording'} aria-pressed={state==='recording'} title="Tap to record · Tap again to stop · 30 seconds max" disabled={state==='starting'||state==='preview'||state==='sending'} onClick={()=>{if(state==='recording')stop();else void start();}}>{state==='recording'?<Square size={16} fill="currentColor"/>:<Mic size={18}/>}</button>
+  {state==='starting'&&<div className="voice-preview" role="status">Opening microphone…</div>}
+  {state==='recording'&&<div className="voice-preview" role="status">🔴 Recording {Math.ceil(seconds)} / 30s · Tap the stop button to preview</div>}
   {(state==='preview'||state==='sending')&&<div className="voice-preview"><audio controls preload="metadata" src={clip} aria-label="Preview your voice message"/><div><button type="button" aria-label="Delete recording" disabled={state==='sending'} onClick={()=>{setClip('');setState('idle');}}><Trash2 size={16}/> Delete</button><button type="button" disabled={state==='sending'} onClick={async()=>{setState('sending');setError('');try{await onSend(clip,seconds);if(alive.current){setClip('');setState('idle');}}catch(e){if(alive.current){setError(e instanceof Error?e.message:'Could not send recording.');setState('preview');}}}}><Send size={16}/>{state==='sending'?'Sending…':'Send voice'}</button></div></div>}
   {error&&<p className="voice-error" role="alert">{error}</p>}
  </>;
