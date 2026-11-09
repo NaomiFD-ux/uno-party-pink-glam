@@ -1029,3 +1029,19 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 .velvet-waiting .room-code-label { font-size:9px;line-height:1.1; }
 .velvet-waiting .room-code b { font-size:20px;line-height:1.15; }
 .velvet-waiting .room-copy-actions button { padding:6px 9px;min-height:0;font-size:10px; }
+
+/* Keep effects visible without physical motion when iOS Reduce Motion is enabled. */
+@media(prefers-reduced-motion:reduce) {
+ .game-screen[data-message-effect=slam] { box-shadow:inset 0 0 0 4px #ffb3dc,inset 0 0 65px #ff54ac66; }
+ .profile-chat-bubble.slam-message,.bot-chat-bubble.slam-message { border:3px solid #f04a9c;box-shadow:0 0 22px #f65fae80; }
+ .echo-vortex .message-echo-copy:nth-child(1) { transform:translate(-42vw,-24vh); }
+ .echo-vortex .message-echo-copy:nth-child(2) { transform:translate(3vw,-8vh); }
+ .echo-vortex .message-echo-copy:nth-child(3) { transform:translate(-40vw,12vh); }
+ .echo-vortex .message-echo-copy:nth-child(4) { transform:translate(1vw,27vh); }
+}
+
+@media(prefers-reduced-motion:reduce) {
+ .full-chat-effects .echo-vortex .message-echo-copy { display:block!important;opacity:0;animation:echo-vortex-float 3s linear both!important; }
+ .full-chat-effects .echo-vortex .message-echo-copy:nth-child(-n+4) { transform:none; }
+ .full-chat-effects .profile-chat-bubble.slam-message,.full-chat-effects .bot-chat-bubble.slam-message { animation:slam-message-in .45s ease-out!important; }
+}
