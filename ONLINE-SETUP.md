@@ -75,3 +75,10 @@ Settings includes **Change Profile Picture**. Uploads are cropped to a square an
 
 
 Hold the message button for half a second to open the floating table chat history; a regular tap still opens the composer. The history popup scrolls independently without dimming or blocking the table and can be closed with ×, Escape, or an outside tap. Sender names, local timestamps, dates, and effect labels are shown. The latest 200 messages are saved with the room across reconnects and rounds; public invitation previews do not include chat history.
+
+
+## Who’s Most Likely To
+
+The host can select UNO or Who’s Most Likely To in the shared waiting room. Editing the game or questions resets readiness. The voting game supports 2–10 players and 10 questions: up to 10 host-written questions play before randomized starter questions. Each player locks one secret vote or passes. The server reveals totals when everyone submits; the host can also reveal early, skip, or finish. Ties award each tied player one spotlight. The recap counts spotlights within this game, separately from UNO wins.
+
+Votes and question order persist with the room. Clients receive only their own vote and submission status until the reveal; the room’s full ballot is never broadcast. Disconnects preserve seats and votes. Explicitly leaving removes invalid ballot choices and transfers the host; with one player remaining the game ends. The host returns everyone to the same waiting room after the recap, allowing another game without new invitations. Chat, voice notes, history, Echo/Slam and profile slaps work in the new game too.

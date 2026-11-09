@@ -1,3 +1,4 @@
+import {LikelyGame} from './online/LikelyGame';
 import {InvitationScreen} from './components/InvitationScreen';
 import { useState, useEffect, useRef } from 'react';
 import { UserProfile, GameSettings } from './types/game';
@@ -37,7 +38,7 @@ export default function App() {
   useEffect(()=>{if(session)localStorage.setItem(`uno_profile_${session.id}`,JSON.stringify(profile));},[profile,session]);
   useEffect(()=>{localStorage.setItem('glam_game_settings',JSON.stringify(settings));},[settings]);
   useEffect(()=>{if(!session||session.id==='guest'){setConnection(null);return;}const c=new GameConnection({id:session.id,name:profile.username,avatar:profile.avatar});setConnection(c);const unsubscribe=c.subscribe(()=>{redraw(n=>n+1);const r=c.room;
-    if(r){if(r.round&&previousRound.current!==r.round.id){previousRound.current=r.round.id;setCurrentTab('table');setRoomOpen(false);}else if(!r.round&&(previousRoom.current!==r.code||previousRound.current)){previousRound.current='';setCurrentTab('lobby');setRoomOpen(false);}previousRoom.current=r.code;}
+    if(r){const activeId=r.round?.id||r.party?.id||'';if(activeId&&previousRound.current!==activeId){previousRound.current=activeId;setCurrentTab('table');setRoomOpen(false);}else if(!r.round&&!r.party&&(previousRoom.current!==r.code||previousRound.current)){previousRound.current='';setCurrentTab('lobby');setRoomOpen(false);}previousRoom.current=r.code;}
     else if(previousRoom.current){previousRoom.current='';previousRound.current='';setCurrentTab('lobby');}
     const code=new URLSearchParams(location.search).get('room')?.toUpperCase();if(c.status==='connected'&&!r&&code&&!new URLSearchParams(location.search).has('invite')&&inviteAttempt.current!==code){inviteAttempt.current=code;void c.send('join',{code}).then(()=>history.replaceState({},'',location.pathname)).catch(e=>setOnlineError(e.message));}
   });return()=>{unsubscribe();c.close();previousRoom.current='';previousRound.current='';inviteAttempt.current='';};},[session?.id]);
@@ -47,21 +48,22 @@ export default function App() {
   const onlineRoom=connection?.room||null;
   const updateSettings=(s:Partial<GameSettings>)=>setSettings(prev=>({...prev,...s}));
   const openSettings=()=>{if(currentTab!=='settings')setPreviousTab(currentTab);setCurrentTab('settings');};
-  const navigate=(tab:AppTab)=>{if(tab==='settings'){openSettings();return;} if(tab==='table'&&onlineRoom){setCurrentTab(onlineRoom.round?'table':'lobby');return;} if(tab==='table'&&!matchActive){setRoomOpen(true);setCurrentTab('lobby');return;} setRoomOpen(false);setCurrentTab(tab);};
+  const navigate=(tab:AppTab)=>{if(tab==='settings'){openSettings();return;} if(tab==='table'&&onlineRoom){setCurrentTab(onlineRoom.round||onlineRoom.party?'table':'lobby');return;} if(tab==='table'&&!matchActive){setRoomOpen(true);setCurrentTab('lobby');return;} setRoomOpen(false);setCurrentTab(tab);};
   const updateProfile=async(updates:Partial<UserProfile>)=>{if(session&&session.id!=='guest'){await saveRemoteProfile(session.id,updates);const saved=await remoteProfile(session.id);if(saved)setProfile(prev=>({...prev,...saved,avatar:saved.avatar||prev.avatar}));}else setProfile(prev=>({...prev,...updates}));};
   const logout=()=>{void signOut().then(()=>{setSession(null);setMatchActive(false);setRoomOpen(false);}).catch(e=>setOnlineError(e.message));};
   const enterAccount=(user:{id:string;name:string;avatar?:string},remember:boolean)=>{saveSession(user,remember);setProfile({...loadProfile(user.id,user.name),...(user.avatar?{avatar:user.avatar}:{})});setSession(user);setCurrentTab('lobby');setInviteAuth(false);};
-  if(invitation&&!inviteAuth)return <InvitationScreen token={invitation} signedIn={!!session&&session.id!=='guest'} connected={connection?.status==='connected'} onLogin={()=>setInviteAuth(true)} onJoin={async code=>{await sendOnline('join',{code});history.replaceState({},'',location.pathname);setInvitation('');setCurrentTab(connection?.room?.round?'table':'lobby');}} onDismiss={()=>{history.replaceState({},'',location.pathname);setInvitation('');setInviteAuth(false);}}/>;
+  if(invitation&&!inviteAuth)return <InvitationScreen token={invitation} signedIn={!!session&&session.id!=='guest'} connected={connection?.status==='connected'} onLogin={()=>setInviteAuth(true)} onJoin={async code=>{await sendOnline('join',{code});history.replaceState({},'',location.pathname);setInvitation('');setCurrentTab(connection?.room?.round||connection?.room?.party?'table':'lobby');}} onDismiss={()=>{history.replaceState({},'',location.pathname);setInvitation('');setInviteAuth(false);}}/>;
   if(inviteAuth)return <AuthScreen initialMode="login" onBack={()=>setInviteAuth(false)} onEnter={enterAccount}/>;
   if(!session)return <AuthScreen onEnter={enterAccount}/>;
   return <div data-screen={currentTab} className="app-shell min-h-screen flex flex-col pb-20 md:pb-6">
     <Header currentTab={currentTab} onSelectTab={navigate} userAvatar={profile.avatar} userName={profile.username}/>
     <main className="flex-1 w-full flex flex-col">
       {onlineError&&<div className="online-notice" role="alert">{onlineError}<button aria-label="Dismiss message" onClick={()=>setOnlineError('')}>×</button></div>}
-      {onlineRoom&&connection?.status!=='connected'&&<p className="online-notice" role="status">Reconnecting… your seat and cards are saved.</p>}
+      {onlineRoom&&connection?.status!=='connected'&&<p className="online-notice" role="status">Reconnecting… {onlineRoom.party?'your seat and vote are saved.':'your seat and cards are saved.'}</p>}
       {session.id==='guest'&&<p className="local-account-note online-test-note">Guest preview · create an account to play with friends</p>}
-      {currentTab==='lobby'&&onlineRoom?.round&&<div className="resume-table-actions"><button className="uno-secondary resume-table" onClick={()=>setCurrentTab('table')}>Return to {onlineRoom.name}</button>{onlineRoom.round.winner&&<button className="text-button" onClick={()=>void sendOnline('leave').catch(()=>{})}>Leave Room</button>}</div>}
-      {currentTab==='lobby'&&onlineRoom&&!onlineRoom.round&&<OnlineWaitingRoom room={onlineRoom} send={sendOnline} onLeave={()=>{void sendOnline('leave').catch(()=>{});}}/>}
+      {currentTab==='lobby'&&(onlineRoom?.round||onlineRoom?.party)&&<div className="resume-table-actions"><button className="uno-secondary resume-table" onClick={()=>setCurrentTab('table')}>Return to {onlineRoom.name}</button>{onlineRoom.round?.winner&&<button className="text-button" onClick={()=>void sendOnline('leave').catch(()=>{})}>Leave Room</button>}</div>}
+      {currentTab==='lobby'&&onlineRoom&&!onlineRoom.round&&!onlineRoom.party&&<OnlineWaitingRoom room={onlineRoom} send={sendOnline} onLeave={()=>{void sendOnline('leave').catch(()=>{});}}/>}
+      {onlineRoom?.party&&<div style={{display:currentTab==='table'?'contents':'none'}}><LikelyGame room={onlineRoom} send={sendOnline} onSettings={openSettings} connected={connection?.status==='connected'}/></div>}
       {onlineRoom?.round&&<div style={{display:currentTab==='table'?'contents':'none'}}><GameTable key={`online-${onlineRoom.code}`} online={{room:onlineRoom,send:sendOnline}} paused={currentTab!=='table'||connection?.status!=='connected'} tableName={onlineRoom.name} settings={{...settings,initialHandSize:onlineRoom.handSize}} userAvatar={onlineRoom.seats.find(p=>p.id===onlineRoom.you)?.avatar||profile.avatar} userName={onlineRoom.seats.find(p=>p.id===onlineRoom.you)?.name||profile.username} onMatchComplete={()=>{}} onBackToLobby={()=>setCurrentTab('lobby')} onOpenSettings={openSettings}/></div>}
       {currentTab==='lobby'&&!roomOpen&&!onlineRoom&&<LobbyScreen profile={profile} onProfile={()=>navigate('profile')} settings={settings} onUpdateSettings={updateSettings} onJoinCode={code=>sendOnline('join',{code})} onJoinTable={(name,practice,hand)=>{if(practice){setTableName(name);setRoomOpen(true);}else void sendOnline('create',{name,handSize:hand||settings.initialHandSize}).catch(()=>{});}}/>}
       {currentTab==='lobby'&&roomOpen&&<WaitingRoom profile={profile} tableName={tableName} onLeave={()=>setRoomOpen(false)} onStart={()=>{setRoomOpen(false);setMatchSettings({...settings});setMatchKey(k=>k+1);setMatchActive(true);setCurrentTab('table');}}/>}

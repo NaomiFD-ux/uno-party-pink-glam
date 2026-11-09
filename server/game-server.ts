@@ -1,3 +1,4 @@
+import {newLikely,revealLikely,likelyView,removeLikelyPlayer,type LikelyState} from './likely';
 import {createServer} from 'node:http';
 import {randomBytes,randomInt,createHash,randomUUID} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
@@ -7,7 +8,7 @@ import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round
 import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
 
 type User={id:string;name:string;avatar:string};
-type Room={code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
+type Room={game?:'uno'|'likely';customQuestions?:string[];party?:LikelyState|null;code:string;name:string;hostId:string;revision:number;handSize:number;seats:(User&{ready:boolean})[];wins:Record<string,number>;round:Round|null;roundId:string;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay;lastWinnerId?:string;message:RoomMessage|null;messages?:ChatMessage[];event:RoomView['event'];played:Record<string,number>};
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const validText=(x:unknown,max:number)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
 function avatar(x:unknown){return typeof x==='string'&&x.length<=150000&&(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x)||/^https:\/\//.test(x))?x:'';}
@@ -20,7 +21,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
  const lastSlaps=new Map<string,number>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
- function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
+ function view(r:Room,id:string):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {game:r.game||'uno',customQuestions:id===r.hostId?r.customQuestions||[]:undefined,party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
  function broadcast(r:Room){for(const [ws,code]of members)if(code===r.code){const u=users.get(ws);if(u)send(ws,{type:'room',room:view(r,u.id)});}}
  function commit(r:Room,result?:any){r.revision++;if(result)store.saveResult(r,r.roundId,result);else store.save(r);broadcast(r);}
  const accounts=createAccounts(store,{secure:options.secureCookies??process.env.NODE_ENV==='production',origins:options.allowedOrigins,onLogout:(id,sessionHash)=>{for(const [ws,u]of users)if(u.id===id&&(!sessionHash||accountSessions.get(ws)===sessionHash))ws.close(1008,'Please sign in again.');},onProfile:user=>{for(const [ws,u]of users)if(u.id===user.id)users.set(ws,user);for(const r of rooms.values()){const seat=r.seats.find(s=>s.id===user.id);if(seat){Object.assign(seat,user);const p=r.round?.players.find(p=>p.id===user.id);if(p)Object.assign(p,{name:user.name,avatar:user.avatar});commit(r);}}}});
@@ -66,7 +67,7 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    const room=invite?rooms.get(invite.code):undefined,inviter=room?.seats.find(p=>p.id===invite!.inviter_id);
    if(!room||!inviter){fail(410,'This invitation is no longer available. Ask your friend for a new link.');return;}
    const current=accounts.session(req),member=room.seats.some(p=>p.id===current?.user.id);
-   res.end(JSON.stringify({code:room.code,name:room.name,inviter:{name:inviter.name,avatar:inviter.avatar||'/default-avatar.svg'},players:room.seats.map(p=>({name:p.name,avatar:p.avatar||'/default-avatar.svg',connected:online(p.id)})),status:room.round?'playing':room.seats.length>=10?'full':'waiting',canJoin:member||(!room.round&&room.seats.length<10)}));return;
+   res.end(JSON.stringify({code:room.code,name:room.name,inviter:{name:inviter.name,avatar:inviter.avatar||'/default-avatar.svg'},players:room.seats.map(p=>({name:p.name,avatar:p.avatar||'/default-avatar.svg',connected:online(p.id)})),status:room.round||room.party?'playing':room.seats.length>=10?'full':'waiting',canJoin:member||(!room.round&&!room.party&&room.seats.length<10)}));return;
   }
   if(req.url!=='/dev/session'||req.method!=='POST'||!options.allowDevAuth||!origin||!options.allowedOrigins.includes(origin)){res.writeHead(404);res.end();return;}
   let text='';try{for await(const chunk of req){text+=chunk;if(text.length>160000)throw Error();}const input=JSON.parse(text);if(!validText(input.name,24))throw Error();const token=randomBytes(32).toString('base64url'),user={id:randomUUID(),name:input.name.trim(),avatar:avatar(input.avatar)};store.saveSession(hash(token),user);res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');res.end(JSON.stringify({token,user}));}catch{res.writeHead(400);res.end();}
@@ -76,8 +77,8 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
   (ws as WebSocket&{alive?:boolean}).alive=true;ws.on('pong',()=>{(ws as WebSocket&{alive?:boolean}).alive=true;});
   let count=0,last=Date.now(),working=false;const deadline=setTimeout(()=>ws.close(1008,'Sign in first'),10000);
   ws.on('message',async bytes=>{let input:any;try{
-   if(Date.now()-last>1000){count=0;last=Date.now();}if(++count>30)throw Error('Please slow down.');if(working)throw Error('Please wait for the previous request.');working=true;
    input=JSON.parse(bytes.toString());if(!validText(input.id,80))throw Error('Invalid request.');
+   if(Date.now()-last>1000){count=0;last=Date.now();}if(++count>30)throw Error('Please slow down.');if(working)throw Error('Please wait for the previous request.');working=true;
    let user=users.get(ws);
    if(input.type==='auth'){
     if(user)throw Error('Already signed in.');const token=input.payload?.token;if(!validText(token,12000))throw Error('Please sign in.');
@@ -94,11 +95,28 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
    }else if(input.type==='join'){
     if(typeof p.code!=='string'||!/^[A-Z0-9]{6}$/.test(p.code))throw Error('Enter a six-character code.');const r=rooms.get(p.code);if(!r)throw Error('That room code was not found.');
     if([...rooms.values()].some(o=>o.code!==r.code&&o.seats.some(s=>s.id===user!.id)))throw Error('Leave your current room first.');
-    if(!r.seats.some(s=>s.id===user!.id)){if(r.round)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
+    if(!r.seats.some(s=>s.id===user!.id)){if(r.round||r.party)throw Error('This round has started. Ask the host to return to the waiting room.');if(r.seats.length>=10)throw Error('This room is full.');r.seats.push({...user,ready:false});}members.set(ws,r.code);commit(r);
    }else{
     const r=rooms.get(members.get(ws)||'');if(!r||!r.seats.some(s=>s.id===user!.id))throw Error('Join a room first.');
-    if(input.type==='slap'){
-     const target=r.seats.find(s=>s.id===p.targetId);if(!r.round||r.round.winner||!target||target.id===user.id)throw Error('Choose another player at your table.');
+    if(['likely-vote','likely-reveal','likely-next','likely-skip','likely-end','likely-lobby'].includes(input.type)){
+     const game=r.party;if(!game)throw Error('This game is not running.');
+     if(input.type==='likely-vote'){
+      if(game.phase!=='vote'||p.questionId!==`${game.id}:${game.index}`)throw Error('This question has already moved on.');
+      if(Object.hasOwn(game.votes,user.id))throw Error('Your vote is already locked in.');
+      if(p.targetId!==null&&!r.seats.some(s=>s.id===p.targetId))throw Error('Pick someone at your table.');
+      game.votes[user.id]=p.targetId;if(r.seats.every(s=>Object.hasOwn(game.votes,s.id)))revealLikely(game);
+     }else{
+      if(r.hostId!==user.id)throw Error('Only the host can do that.');
+      if(input.type!=='likely-lobby'&&p.questionId!==`${game.id}:${game.index}`)throw Error('This question has already moved on.');
+      if(input.type==='likely-lobby'){if(game.phase!=='finished')throw Error('Finish this game first.');r.party=null;r.message=null;r.seats.forEach(s=>s.ready=false);}
+      else if(input.type==='likely-end')game.phase='finished';
+      else if(input.type==='likely-reveal'){if(game.phase!=='vote')throw Error('The results are already revealed.');revealLikely(game);}
+      else if(input.type==='likely-skip'){if(game.phase!=='vote')throw Error('Move to the next question instead.');game.skipped=true;game.results={};game.phase='reveal';}
+      else{if(game.phase!=='reveal')throw Error('Reveal the votes first.');if(game.index+1>=game.questions.length)game.phase='finished';else{game.index++;game.phase='vote';game.votes={};game.results={};game.skipped=false;}}
+     }
+     commit(r);
+    }else if(input.type==='slap'){
+     const target=r.seats.find(s=>s.id===p.targetId);if((!r.round&&!r.party)||(r.round?.winner)||(r.party?.phase==='finished')||!target||target.id===user.id)throw Error('Choose another player at your table.');
      if(Date.now()-(lastSlaps.get(user.id)||0)<2000)throw Error('Give them a second to recover!');lastSlaps.set(user.id,Date.now());
      r.message={id:randomUUID(),senderId:user.id,text:`👋 Slapped ${target.name}`,effect:'normal',at:Date.now(),slap:{targetId:target.id}};
      r.messages=[...(r.messages||[]),{...r.message,senderName:user.name}].slice(-200);store.save(r);broadcast(r);
@@ -116,7 +134,11 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
      if(!validText(p.text,120)||!['normal','slam','echo'].includes(p.effect))throw Error('Check your message.');const history=r.messages||(r.message?[{...r.message,senderName:r.seats.find(s=>s.id===r.message!.senderId)?.name||'Player'}]:[]);r.message={id:randomUUID(),senderId:user.id,text:p.text.trim(),effect:p.effect,at:Date.now()};r.messages=[...history,{...r.message,senderName:user.name}].slice(-200);store.save(r);broadcast(r);
     }else{
      if(input.revision!==r.revision)throw Error('The table changed. Try again.');
-     if(input.type==='ready'){if(r.round)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
+     if(input.type==='game-mode'){
+      if(r.hostId!==user.id||r.round||r.party)throw Error('Only the host can choose a game in the waiting room.');
+      if(!['uno','likely'].includes(p.game)||!Array.isArray(p.questions)||p.questions.length>10||p.questions.some((q:unknown)=>!validText(q,120)))throw Error('Add up to 10 questions, 120 characters each.');
+      r.game=p.game;r.customQuestions=p.questions.map((q:string)=>q.trim());r.seats.forEach(s=>s.ready=false);commit(r);
+     }else if(input.type==='ready'){if(r.round||r.party)throw Error('The round has already started.');if(typeof p.ready!=='boolean')throw Error('Invalid ready status.');r.seats.find(s=>s.id===user!.id)!.ready=p.ready;commit(r);}
      else if(input.type==='open-seats'){
       if(r.hostId!==user.id)throw Error('Only the host can invite players between rounds.');
       if(!r.round?.winner)throw Error('Finish the current round before adding players.');
@@ -124,8 +146,9 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
       clearTimeout(timers.get(r.code));timers.delete(r.code);commit(r);
      }
      else if(input.type==='start'){
-      if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
-      r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);
+      if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.party||r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
+      if(r.game==='likely'){r.round=null;r.party=newLikely(r.customQuestions);r.event=null;r.message=null;commit(r);}else{
+      r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);}
      }else if(input.type==='move'){
       if(!r.round||r.round.winner||r.round.players[r.round.active].id!==user.id)throw Error('Wait for your turn.');if(Date.now()<r.startedAt+3500)throw Error('The cards are still being dealt.');
       const m=p.move;if(!m||!['play','draw','skip'].includes(m.type))throw Error('Invalid move.');
@@ -141,8 +164,8 @@ export function createGameServer(options:{databasePath:string;allowDevAuth?:bool
         result={id:r.roundId,room_code:r.code,table_name:r.name,winner_id:winner,finished_at:new Date().toISOString(),players:participants.map(p=>({user_id:p.id,cards_played:r.played[p.id]||0,turns:r.round!.turns}))};
        }
       }else r.round=null;
-      r.seats=r.seats.filter(s=>s.id!==user!.id);if(r.hostId===user.id)r.hostId=r.seats[0]?.id||'';
-      if(!r.seats.length)r.round=null;
+      r.seats=r.seats.filter(s=>s.id!==user!.id);if(r.party)removeLikelyPlayer(r.party,user.id,r.seats.map(s=>s.id));if(r.hostId===user.id)r.hostId=r.seats[0]?.id||'';
+      if(!r.seats.length){r.round=null;r.party=null;}
       for(const [socket,id]of users)if(id.id===user.id){members.delete(socket);send(socket,{type:'room',room:null});}
       commit(r,result);schedule(r);
       if(result)for(const [ws,u]of users)if(participants.some(p=>p.id===u.id))send(ws,{type:'profile-updated'});

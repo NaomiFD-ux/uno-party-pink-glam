@@ -4,4 +4,6 @@ export type ChatMessage=RoomMessage&{senderName:string};
 export type Seat={id:string;name:string;avatar:string;ready:boolean;connected:boolean};
 export type WinningPlay={actorId:string;name:string;cards:Card[];color:CardColor;at:number};
 export type RoundView={id:string;players:(Seat&{count:number;uno:boolean})[];hand:Card[];discard:Card[];color:CardColor;direction:PlayDirection;activeId:string;pending:number;pendingType:'draw2'|'wild4'|null;winner:string|null;turns:number;drawnCardId:string|null;startedAt:number;turnDeadline?:number;winningPlay?:WinningPlay};
-export type RoomView={code:string;name:string;hostId:string;you:string;revision:number;handSize:number;seats:Seat[];wins:Record<string,number>;round:RoundView|null;message:RoomMessage|null;messages?:ChatMessage[];event:{id:string;actorId:string;kind:'play'|'draw'|'skip'|'start';count?:number;value?:string}|null};
+export type RoomView={game?:'uno'|'likely';customQuestions?:string[];party?:LikelyView|null;code:string;name:string;hostId:string;you:string;revision:number;handSize:number;seats:Seat[];wins:Record<string,number>;round:RoundView|null;message:RoomMessage|null;messages?:ChatMessage[];event:{id:string;actorId:string;kind:'play'|'draw'|'skip'|'start';count?:number;value?:string}|null};
+
+export type LikelyView={id:string;questionId:string;question:string;number:number;total:number;phase:'vote'|'reveal'|'finished';submitted:string[];yourVote?:string|null;results:Record<string,number>;totals:Record<string,number>;skipped:boolean};

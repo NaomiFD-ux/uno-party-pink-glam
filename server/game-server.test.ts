@@ -161,3 +161,52 @@ test('profile slaps synchronize target, preserve gameplay and enforce cooldown a
   await b.send('slap',{targetId:a.room!.you});await delay();assert.equal(a.room!.message!.slap!.targetId,a.room!.you);
  }finally{a.ws.terminate();b.ws.terminate();await server.close();}
 });
+
+test('Who’s Most Likely To keeps simultaneous ballots private, reveals ties and supports host skip/recap without UNO changes',async()=>{
+ const {server,url}=await launch();const a=await player(url,'Likely Host'),b=await player(url,'Likely Friend'),c=await player(url,'Third Friend');
+ try{
+  await a.send('create',{name:'Friend group',handSize:7});await b.send('join',{code:a.room!.code});await c.send('join',{code:a.room!.code});await delay();
+  await assert.rejects(b.send('game-mode',{game:'likely',questions:[]}),/host/i);
+  await a.send('game-mode',{game:'likely',questions:['Who is always late?']});await delay();
+  for(const person of [a,b,c]){await person.send('ready',{ready:true});await delay();}await a.send('start');await delay();
+  assert.equal(a.room!.round,null);const game=a.room!.party!;assert.equal(game.question,'Who is always late?');assert.equal(game.total,10);assert.equal(game.phase,'vote');
+  await a.send('slap',{targetId:b.room!.you});await delay();assert.equal(b.room!.message!.slap!.targetId,b.room!.you);assert.deepEqual(a.room!.party,game);
+  await b.send('message',{text:'This is going to be funny',effect:'echo'});await delay();assert.equal(a.room!.message!.effect,'echo');
+  await c.send('voice',{audio:'data:audio/mp4;base64,YWJj',duration:2});await delay();assert.equal(a.room!.message!.voice!.duration,2);assert.equal(a.room!.round,null);
+  await a.send('likely-vote',{questionId:game.questionId,targetId:b.room!.you});await delay();
+  assert.equal(a.room!.party!.yourVote,b.room!.you);assert.equal(b.room!.party!.yourVote,undefined);assert.deepEqual(b.room!.party!.results,{});assert(!('votes' in b.room!.party!));assert(!('questions' in b.room!.party!));
+  await assert.rejects(a.send('likely-vote',{questionId:game.questionId,targetId:a.room!.you}),/locked/i);
+  await Promise.all([b.send('likely-vote',{questionId:game.questionId,targetId:a.room!.you}),c.send('likely-vote',{questionId:game.questionId,targetId:null})]);await delay();
+  assert.equal(a.room!.party!.phase,'reveal');assert.equal(a.room!.party!.results[a.room!.you],1);assert.equal(a.room!.party!.results[b.room!.you],1);assert.equal(a.room!.party!.totals[a.room!.you],1);assert.equal(a.room!.party!.totals[b.room!.you],1);
+  await assert.rejects(b.send('likely-next',{questionId:game.questionId}),/host/i);
+  await a.send('likely-next',{questionId:game.questionId});await delay();assert.equal(a.room!.party!.number,2);assert.deepEqual(a.room!.party!.results,{});
+  await assert.rejects(c.send('likely-vote',{questionId:game.questionId,targetId:a.room!.you}),/moved on/i);
+  const q2=a.room!.party!.questionId;await a.send('likely-skip',{questionId:q2});await delay();assert.equal(a.room!.party!.skipped,true);assert.equal(a.room!.party!.totals[a.room!.you],1);
+  await a.send('likely-next',{questionId:q2});await delay();
+  while(String(a.room!.party!.phase)!=='finished'){
+   await delay(100); // Pace a full ten-question game below the request throttle.
+   const q=a.room!.party!.questionId;
+   await Promise.all([a,b,c].map(person=>person.send('likely-vote',{questionId:q,targetId:null})));await delay();assert.equal(a.room!.party!.phase,'reveal');
+   await a.send('likely-next',{questionId:q});await delay();
+  }
+  assert.deepEqual(a.room!.wins,{});assert.equal(a.room!.party!.number,10);
+  await a.send('likely-lobby');await delay();assert.equal(a.room!.party,null);assert(a.room!.seats.every(s=>!s.ready));
+  await a.send('game-mode',{game:'uno',questions:[]});await delay();for(const person of [a,b,c]){await person.send('ready',{ready:true});await delay();}await a.send('start');await delay();assert(a.room!.round);assert.equal(a.room!.round!.hand.length,7);assert.equal(a.room!.party,null);
+ }finally{a.ws.terminate();b.ws.terminate();c.ws.terminate();await server.close();}
+});
+
+test('likely ballots survive reconnect/restart and explicitly leaving removes invalid choices and transfers host',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-likely-')),db=join(dir,'rooms.sqlite');let runtime=await launch(db);
+ let a=await player(runtime.url,'Host'),b=await player(runtime.url,'Friend'),c=await player(runtime.url,'Third');
+ try{
+  await a.send('create',{name:'Saved party',handSize:7});await b.send('join',{code:a.room!.code});await c.send('join',{code:a.room!.code});await delay();await a.send('game-mode',{game:'likely',questions:[]});await delay();
+  for(const person of [a,b,c]){await person.send('ready',{ready:true});await delay();}await a.send('start');await delay();
+  const q=a.room!.party!.questionId;await a.send('likely-vote',{questionId:q,targetId:c.room!.you});await delay();
+  const tokens=[a.token,b.token,c.token],id=a.room!.party!.id;a.ws.terminate();b.ws.terminate();c.ws.terminate();await runtime.server.close();runtime=await launch(db);
+  a=await player(runtime.url,'Host',tokens[0]);b=await player(runtime.url,'Friend',tokens[1]);c=await player(runtime.url,'Third',tokens[2]);await delay();
+  assert.equal(a.room!.party!.id,id);assert.equal(a.room!.party!.questionId,q);assert.equal(a.room!.party!.yourVote,c.room!.you);assert.deepEqual(b.room!.party!.results,{});
+  const outsider=await player(runtime.url,'Late friend');await assert.rejects(outsider.send('join',{code:a.room!.code}),/started/i);outsider.ws.terminate();
+  await c.send('leave');await delay();assert.equal(a.room!.party!.yourVote,undefined);assert.equal(a.room!.party!.submitted.length,0);
+  await a.send('leave');await delay();assert.equal(b.room!.hostId,b.room!.you);assert.equal(b.room!.party!.phase,'finished');await b.send('likely-lobby');await delay();assert.equal(b.room!.party,null);
+ }finally{a.ws.terminate();b.ws.terminate();c.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
