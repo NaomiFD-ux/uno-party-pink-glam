@@ -42,3 +42,7 @@ Built-in image generation. Final optimized asset: `public/game-night/secret-sant
 Final prompt: Create a premium 3D Christmas website banner background for a glamorous pink Game Night dashboard, wide landscape about 2.5:1. Deep burgundy wine and raspberry velvet with soft gold glints. At the left third, a large glossy blush-pink gift box with a rich magenta satin bow, ivory hanging heart tag, fluffy white snow, pink glass baubles and delicate evergreen sprigs. Keep the right 60 percent dark burgundy with clean negative space for live heading and button. Luxurious product photography / polished 3D render, satin materials, hot pink, blush, burgundy and warm gold. No words, letters, numbers, logos, UI, borders or buttons.
 
 The title Santa hat and lower-left holly sprig are decorative inline SVG; snowflakes and sparkles use the existing icon set. The Gift Exchange ribbon uses live text with folded CSS tails. These accents remain sharp and independently positioned at phone sizes.
+
+
+### Approved Secret Santa artwork
+The final homepage uses the user's supplied finished banner unchanged in composition: `public/game-night/secret-santa-banner.webp`, optimized from the supplied PNG. It includes the original Santa hat, title, gold gift ribbon, snowflakes, evergreen branches and Play now artwork. The full image is the accessible live control opening Secret Santa, with no recreated decorative overlays. The previous generated background is retained only as a draft; it is not used by the homepage.

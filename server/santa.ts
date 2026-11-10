@@ -3,7 +3,7 @@ import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
 import {tokenHash,type createAccounts} from './accounts';
 import type {SantaView,SantaSummary,SantaMember} from '../src/online/santa';
-type Exchange={id:string;token:string;ownerId:string;name:string;budget:string;date:string;members:string[];assignments:Record<string,string>|null;revealed:string[];revision:number};
+type Exchange={id:string;token:string;ownerId:string;name:string;budget:string;date:string;members:string[];assignments:Record<string,string>|null;revealed:string[];wishes?:Record<string,string>;revision:number};
 const fail=(message:string,status=400):never=>{throw Object.assign(Error(message),{status});};
 const text=(value:unknown,max:number,required=false)=>{if(typeof value!=='string'||value.length>max||(required&&!value.trim()))fail('Check the exchange details.');return (value as string).trim();};
 
@@ -23,7 +23,7 @@ export function createSanta(store:Store,accounts:Pick<ReturnType<typeof createAc
  const byToken=(token:unknown)=>{if(typeof token!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(token))fail('This invitation was not found.',404);const row=store.db.prepare('SELECT body FROM gift_exchanges WHERE token=?').get(token as string) as {body:string}|undefined;if(!row)fail('This invitation was not found.',404);return JSON.parse(row.body) as Exchange;};
  const member=(id:string):SantaMember=>{const row=store.db.prepare('SELECT id,name,avatar FROM accounts WHERE id=?').get(id) as SantaMember|undefined;if(!row)fail('A participant account is unavailable.');return {...row,avatar:row.avatar?.startsWith('data:')?`/api/game/avatar/${id}?v=${tokenHash(row.avatar).slice(0,12)}`:row.avatar||'/default-avatar.svg'};};
  const summary=(ex:Exchange):SantaSummary=>({id:ex.id,name:ex.name,budget:ex.budget,date:ex.date,ownerId:ex.ownerId,count:ex.members.length,drawn:!!ex.assignments,revision:ex.revision});
- const view=(ex:Exchange,you:string):SantaView=>({...summary(ex),you,members:ex.members.map(member),...(ex.ownerId===you&&!ex.assignments?{inviteToken:ex.token}:{}),...(ex.assignments&&ex.revealed.includes(you)?{recipient:member(ex.assignments[you])}:{})});
+ const view=(ex:Exchange,you:string):SantaView=>({...summary(ex),you,members:ex.members.map(member),yourWishlist:ex.wishes?.[you]||'',...(ex.ownerId===you&&!ex.assignments?{inviteToken:ex.token}:{}),...(ex.assignments&&ex.revealed.includes(you)?{recipient:{...member(ex.assignments[you]),wishlist:ex.wishes?.[ex.assignments[you]]||''}}:{})});
  async function route(req:IncomingMessage,res:ServerResponse) {
   const path=req.url?.split('?')[0]||'';if(path!=='/santa'&&!path.startsWith('/santa/'))return false;
   res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','private, no-store');res.setHeader('X-Content-Type-Options','nosniff');
@@ -39,7 +39,7 @@ export function createSanta(store:Store,accounts:Pick<ReturnType<typeof createAc
     if(all().filter(ex=>ex.ownerId===you&&!ex.assignments).length>=10)fail('Finish one of your open exchanges before creating another.');
     const name=text(input.name,60,true),budget=text(input.budget??'',60),date=text(input.date??'',10);
     if(date&&(!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(Date.parse(date))||new Date(date).toISOString().slice(0,10)!==date))fail('Choose a valid exchange date.');
-    const ex:Exchange={id:randomUUID(),token:randomBytes(32).toString('base64url'),ownerId:you,name,budget,date,members:[you],assignments:null,revealed:[],revision:1};save(ex);response={exchange:view(ex,you)};
+    const ex:Exchange={id:randomUUID(),token:randomBytes(32).toString('base64url'),ownerId:you,name,budget,date,members:[you],assignments:null,revealed:[],wishes:{},revision:1};save(ex);response={exchange:view(ex,you)};
    }else if(path.startsWith('/santa/invite/')&&req.method==='GET'){
     const ex=byToken(path.slice('/santa/invite/'.length));response={name:ex.name,budget:ex.budget,date:ex.date,count:ex.members.length,drawn:!!ex.assignments,organizer:member(ex.ownerId).name,...(ex.members.includes(you)?{exchangeId:ex.id}:{})};
    }else if(path==='/santa/join'&&req.method==='POST'){
@@ -47,12 +47,12 @@ export function createSanta(store:Store,accounts:Pick<ReturnType<typeof createAc
     if(!ex.members.includes(you)){if(ex.assignments)fail('Names have already been drawn. This exchange is closed.',409);if(ex.members.length>=50)fail('This exchange is full.',409);ex.members.push(you);ex.revision++;save(ex);}
     response={exchange:view(ex,you)};
    }else{
-    const match=/^\/santa\/([a-f0-9-]{36})(?:\/(draw|reveal|leave|remove))?$/.exec(path),ex=match?load(match[1]):undefined;
+    const match=/^\/santa\/([a-f0-9-]{36})(?:\/(draw|reveal|leave|remove|wishlist))?$/.exec(path),ex=match?load(match[1]):undefined;
     if(!match||!ex||!ex.members.includes(you))fail('This exchange was not found.',404);
     const action=match[2];
     if(req.method==='GET'&&!action)response={exchange:view(ex,you)};
     else if(req.method==='POST'&&action){
-     if(action==='reveal'){
+     if(action==='wishlist'){ex.wishes={...ex.wishes,[you]:text(input.text,600)};save(ex);response={exchange:view(ex,you)};}else if(action==='reveal'){
       if(!ex.assignments)fail('The organizer has not drawn names yet.',409);
       if(!ex.revealed.includes(you)){ex.revealed.push(you);save(ex);}response={exchange:view(ex,you)};
      }else{

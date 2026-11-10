@@ -90,3 +90,30 @@ test('participants may leave or be removed before the draw; revoked sessions can
   assert.equal((await second(`/santa/${id}/reveal`,{})).status,401);
  }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });
+
+test('wishlists stay private to their author and assigned giver, including edits after drawing',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-santa-wishes-')),path=join(dir,'game.sqlite'),store=new Store(path);
+ const people=['Host','Second','Third'].map(name=>seed(store,name));store.close();let runtime=await launch(path);
+ try{
+  let clients=people.map(p=>client(runtime.url,p.token));let ex=(await clients[0]('/santa',{name:'Wishlists'})).data.exchange;const id=ex.id,token=ex.inviteToken;
+  await clients[1]('/santa/join',{token});ex=(await clients[2]('/santa/join',{token})).data.exchange;
+  const wishes=Object.fromEntries(people.map((p,i)=>[p.id,`Only my giver may see gift idea ${i}`]));
+  for(const [i,request] of clients.entries()){
+   const saved=(await request(`/santa/${id}/wishlist`,{text:wishes[people[i].id],userId:people[(i+1)%3].id})).data.exchange;
+   assert.equal(saved.yourWishlist,wishes[people[i].id]);assert.equal(saved.revision,ex.revision);assert(!('wishes' in saved));
+  }
+  const preview=JSON.stringify((await clients[1]('/santa/invite/'+token)).data);Object.values(wishes).forEach(w=>assert(!preview.includes(w)));
+  assert.equal((await clients[0](`/santa/${id}/wishlist`,{text:'x'.repeat(601)})).status,400);
+  ex=(await clients[0](`/santa/${id}/draw`,{revision:ex.revision})).data.exchange;
+  for(const [i,request] of clients.entries()){
+   const before=(await request(`/santa/${id}`)).data.exchange;assert(!before.recipient);assert.equal(before.yourWishlist,wishes[people[i].id]);
+   const revealed=(await request(`/santa/${id}/reveal`,{})).data.exchange;
+   assert.equal(revealed.recipient.wishlist,wishes[revealed.recipient.id]);
+   for(const p of people)if(p.id!==people[i].id&&p.id!==revealed.recipient.id)assert(!JSON.stringify(revealed).includes(wishes[p.id]));
+  }
+  await clients[1](`/santa/${id}/wishlist`,{text:'Updated after the draw'});
+  for(const request of clients){const own=(await request(`/santa/${id}`)).data.exchange;if(own.recipient.id===people[1].id)assert.equal(own.recipient.wishlist,'Updated after the draw');}
+  await runtime.server.close();runtime=await launch(path);clients=people.map(p=>client(runtime.url,p.token));
+  assert.equal((await clients[1](`/santa/${id}`)).data.exchange.yourWishlist,'Updated after the draw');
+ }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
