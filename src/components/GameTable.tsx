@@ -1,3 +1,4 @@
+import {AngelGiftZone} from './AngelGift';
 import {shuffleSeating} from '../utils/seating';
 import {OwnerCardAction} from './OwnerCardAction';
 import {TableChat} from './TableChat';
@@ -98,6 +99,9 @@ export const GameTable: React.FC<GameTableProps> = ({
   useEffect(()=>{if(!botMessage)return;const timer=setTimeout(()=>setBotMessage(null),5000);return()=>clearTimeout(timer);},[botMessage]);
   const chatInput=useRef<HTMLInputElement>(null);
 
+  const [angelFeedback,setAngelFeedback]=useState('');
+  const angelBusy=useRef(false);
+  useEffect(()=>{if(!angelFeedback)return;const timer=setTimeout(()=>setAngelFeedback(''),4000);return()=>clearTimeout(timer);},[angelFeedback]);
   const [transformCardId,setTransformCardId]=useState<string|null>(null);
   const [transformError,setTransformError]=useState('');
   const [transforming,setTransforming]=useState(false);
@@ -225,6 +229,13 @@ export const GameTable: React.FC<GameTableProps> = ({
     if(next.active!==0||next.turns!==round.turns){setPendingWildCard(null);setBatch([]);}
   },[online?.room]);
   useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current)return;lastOnlineMessage.current=m.id;if(m.slap){setSlap({targetId:mapId(m.slap.targetId),id:m.id});return;}if(m.voice){setReaction('');setBotMessage(null);enqueueVoice({...m,senderId:mapId(m.senderId)});soundFX.playTap();return;}const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
+  const activateAngelGift=async()=>{
+    if(!online?.room.canUseAngelGift||angelBusy.current||paused||drawing||phase!=='playing'||round.winner)return;
+    angelBusy.current=true;
+    try{await online.send('angel-gift');setBatch([]);setPendingWildCard(null);setAngelFeedback('A little love, a little +4 💗 One of your cards is now a Wild Draw Four!');}
+    catch(error){setAngelFeedback((error as Error).message);}
+    finally{angelBusy.current=false;}
+  };
   const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(shuffleSeating(players),settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
   useEffect(()=>{if(phase==='shuffle'&&!paused)soundFX.playShuffle();},[phase,paused]);
   useEffect(()=>{if(paused||phase==='playing')return;const id=setTimeout(()=>setPhase(phase==='shuffle'?'deal':'playing'),phase==='shuffle'?950:2400);return()=>clearTimeout(id);},[phase,paused]);
@@ -371,7 +382,7 @@ export const GameTable: React.FC<GameTableProps> = ({
           />
 
           {/* DRAW PILE */}
-          <div className="flex flex-col items-center">
+          <div className="draw-pile-column relative flex flex-col items-center">
             <div className="draw-stack-target relative group cursor-pointer" role="button" tabIndex={0} aria-label="Draw card" onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleDrawCard();}}} onClick={handleDrawCard}>
               {/* Stacked effect layers */}
               <div className="absolute -top-1 -left-1 w-16 h-24 sm:w-20 sm:h-28 rounded-xl bg-pink-900/60 shadow-md transform -rotate-3" />
@@ -381,6 +392,7 @@ export const GameTable: React.FC<GameTableProps> = ({
             <div className="draw-label mt-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-xs text-white text-[10px] sm:text-xs font-bold border border-white/20">
               Draw
             </div>
+            {online?.room.canUseAngelGift&&<AngelGiftZone disabled={paused||drawing||phase!=='playing'||!!round.winner} onGift={()=>void activateAngelGift()}/>}
           </div>
 
           {/* DISCARD PILE */}
@@ -494,6 +506,7 @@ export const GameTable: React.FC<GameTableProps> = ({
         </div>
       </div>,document.body)}
       {drawFlight&&<div className="draw-flight-layer" aria-hidden="true">{Array.from({length:drawFlight.count},(_,i)=><span key={`${drawFlight.id}-${i}`} className="draw-flight-card" style={{left:drawFlight.x,top:drawFlight.y,animationDelay:`${i*80}ms`,'--flight-x':`${drawFlight.dx}px`,'--flight-y':`${drawFlight.dy}px`} as React.CSSProperties}>UNO</span>)}</div>}
+      {angelFeedback&&createPortal(<div className="angel-gift-feedback" role="status" aria-live="polite">{angelFeedback}</div>,document.body)}
       {slapError&&<div className="slap-notice" role="status">{slapError}</div>}
       {messageEffect?.type==='echo'&&<EchoEffect key={messageEffect.id} text={messageEffect.text}/>}
       {/* Color Picker Modal */}
