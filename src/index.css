@@ -963,10 +963,17 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 @media(max-width:767px) { .velvet-game[data-player-count="5"] .opponent:nth-child(1) { left:16px!important; } }
 .velvet-game[data-player-count="5"] .turn-flow>g:nth-child(4) { translate:0 -18px; }
 .velvet-game[data-player-count="5"] .turn-flow>g:nth-child(2) { translate:0 -18px; }
-/* Four-player layout: two upper seats and one beneath the central piles. */
-.velvet-game[data-player-count="4"] .opponent:nth-child(1) { left:6%;right:auto;top:5%; }
-.velvet-game[data-player-count="4"] .opponent:nth-child(2) { left:auto;right:5%;top:5%; }
-.velvet-game[data-player-count="4"] .opponent:nth-child(3) { left:50%;right:auto;top:75%;transform:translateX(-50%); }
+/* Four players follow the table clockwise: you, left, top, right. */
+.velvet-game[data-player-count="4"] .opponent:nth-child(1) { left:16px;right:auto;top:42%;transform:none; }
+.velvet-game[data-player-count="4"] .opponent:nth-child(2) { left:50%;right:auto;top:5%;transform:translateX(-50%); }
+.velvet-game[data-player-count="4"] .opponent:nth-child(3) { left:auto;right:0;top:42%;transform:none; }
+@media(max-width:767px) {
+ .velvet-game[data-player-count="4"] .opponent:nth-child(1) { left:0; }
+ .velvet-game[data-player-count="4"] .opponent:is(:nth-child(1),:nth-child(3)) { width:78px;max-width:24%;grid-template-columns:58px;row-gap:4px; }
+ .velvet-game[data-player-count="4"] .opponent:is(:nth-child(1),:nth-child(3))>.game-player-name { position:absolute;top:-19px;left:0;grid-column:1;grid-row:1;width:78px;max-width:100%; }
+ .velvet-game[data-player-count="4"] .opponent:is(:nth-child(1),:nth-child(3))>.slap-profile-target { grid-column:1;grid-row:1; }
+ .velvet-game[data-player-count="4"] .opponent:is(:nth-child(1),:nth-child(3))>.card-count-fan { grid-column:1;grid-row:2; }
+}
 /* Chat keeps its compact overlay and keyboard handling, with the new rose finish. */
 .game-chat-composer { border:1px solid #f295c0!important;border-radius:20px!important;background:linear-gradient(145deg,#fff4fa,#fbd9ec)!important;box-shadow:0 18px 65px #33001966,inset 0 1px 0 #fff!important; }
 .chat-composer-heading { color:#740d43; }
@@ -976,7 +983,7 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 .send-effect-options>button[aria-pressed=true] { background:linear-gradient(135deg,#e82d92,#a70c61)!important;box-shadow:0 2px 7px #a70c6133; }
 .game-chat-composer form { padding:5px;border:1px solid #edadd0;border-radius:999px;background:#fff9fc; }
 .game-chat-composer form input { background:transparent!important;border:0!important;box-shadow:none!important;font-size:16px; }
-.velvet-game[data-player-count="4"] .opponent:nth-child(-n+2) { transform:none;translate:0 0; }
+.velvet-game[data-player-count="4"] .opponent { translate:0 0; }
 /* Matching velvet waiting room and round results. */
 .velvet-waiting { color:#fff0f8;background:radial-gradient(ellipse at center,#87134e,#470024);border-radius:24px;padding:18px 12px 26px;max-width:960px;margin:auto; }
 .velvet-waiting .back-link { color:#ffd8eb;font-size:0; }.velvet-waiting .back-link svg { width:25px;height:25px; }
