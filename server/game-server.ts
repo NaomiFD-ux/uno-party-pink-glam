@@ -6,6 +6,7 @@ import {randomBytes,randomInt,createHash,randomUUID} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createAccounts} from './accounts';
 import {Store} from './store';
+import {createSanta} from './santa';
 import {shuffleSeating} from '../src/utils/seating';
 import {bindOwner,transformOwnerCard,transformGiftCard} from './owner-power';
 import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round,type Move} from '../src/utils/round';
@@ -46,11 +47,13 @@ export function createGameServer(options:{databasePath:string;ownerAccountName?:
   const forced=mustTakeDrawStack(r.round),wait=forced?450:Math.max(0,r.turnDeadline-Date.now());
   timers.set(r.code,setTimeout(()=>{timers.delete(r.code);if(!r.round||r.round.winner||expireIdle(r))return;apply(r,r.round.players[r.round.active].id,forced?{type:'draw'}:automaticMove(r.round));},wait));
  }
+ const santa=createSanta(store,accounts,options.allowedOrigins);
  const http=createServer(async(req,res)=>{
   const origin=req.headers.origin;if(origin&&options.allowedOrigins.includes(origin)){res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Headers','Content-Type');}
   if(req.method==='OPTIONS'){res.writeHead(origin&&options.allowedOrigins.includes(origin)?204:403);res.end();return;}
   if(req.url==='/health'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({ok:true,auth:'server-accounts'}));return;}
   if(await accounts.route(req,res))return;
+  if(await santa.route(req,res))return;
   const path=req.url?.split('?')[0]||'';
   const voicePath=path.match(/^\/voice\/([a-f0-9-]{36})$/);
   if(voicePath){
