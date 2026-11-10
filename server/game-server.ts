@@ -6,6 +6,7 @@ import {randomBytes,randomInt,createHash,randomUUID} from 'node:crypto';
 import {WebSocketServer,WebSocket} from 'ws';
 import {createAccounts} from './accounts';
 import {Store} from './store';
+import {shuffleSeating} from '../src/utils/seating';
 import {bindOwner,transformOwnerCard} from './owner-power';
 import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round,type Move} from '../src/utils/round';
 import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
@@ -174,6 +175,7 @@ export function createGameServer(options:{databasePath:string;ownerAccountName?:
      else if(input.type==='start'){
       if(r.hostId!==user.id)throw Error('Only the host can deal.');if(r.party||r.pool||r.round&&!r.round.winner)throw Error('Finish the current round first.');if(r.seats.length<2||r.seats.some(s=>!s.ready||!online(s.id)))throw Error('At least two connected, ready players are needed.');
       r.expiredAt=undefined;if(r.game==='pool'){if(r.seats.length!==3)throw Error('Pool needs exactly three ready players.');r.round=null;r.party=null;r.pool=newPool(r.seats.map(s=>s.id));r.message=null;commit(r);}else if(r.game==='likely'){r.round=null;r.party=newLikely(fairQuestions(r.seats.map(s=>r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[]))),r.likelyTopics);r.party.voteDeadline=Date.now()+voteDuration;r.event=null;r.message=null;commit(r);schedule(r);}else{
+      if(r.round||r.lastWinnerId)r.seats=shuffleSeating(r.seats,randomInt);
       r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);}
      }else if(input.type==='transform-card'){
       if(!accountSessions.has(ws)||!ownerAccountId||user.id!==ownerAccountId)throw Error('This action is not available to your account.');

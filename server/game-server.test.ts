@@ -44,8 +44,14 @@ test('ten players complete a real shared round; wins sync once and persist into 
  assert.equal(all[0].room!.seats.length,10);assert.equal(newcomer.room!.wins[newcomer.room!.you]||0,0);
  assert.deepEqual(newcomer.room!.wins,scores);
  const seated=all.filter(p=>p.room?.code===r.code);
+ const oldSeats=seated[0].room!.seats.map(p=>p.id);
  for(const p of seated){await p.send('ready',{ready:true});await delay();}
  await all[0].send('start');await delay();assert.notEqual(all[0].room!.round!.id,previous);assert.equal(Object.values(all[0].room!.wins).reduce((a,b)=>a+b,0),1);
+ const newSeats=all[0].room!.round!.players.map(p=>p.id);
+ const adjacent=(ids:string[],id:string)=>{const i=ids.indexOf(id);return [ids[(i+ids.length-1)%ids.length],ids[(i+1)%ids.length]].sort();};
+ for(const id of oldSeats)assert.notDeepEqual(adjacent(newSeats,id),adjacent(oldSeats,id));
+ for(const p of seated){assert.deepEqual(p.room!.seats.map(s=>s.id),newSeats);assert.deepEqual(p.room!.round!.players.map(s=>s.id),newSeats);assert.deepEqual(p.room!.wins,scores);}
+ assert.equal(all[0].room!.hostId,all[0].room!.you);
  assert.equal(all[0].room!.round!.activeId,r.round!.winner);
  assert.equal(newcomer.room!.round!.hand.length,7);assert(newcomer.room!.round!.players.some(p=>p.id===newcomer.room!.you));
  await assert.rejects(all[0].send('open-seats'),/Finish/);
@@ -257,3 +263,4 @@ test('three-player pool shares server physics, enforces turns and seats, and res
  await a.send('create',{name:'Heart pool',handSize:7,game:'pool'});await b.send('join',{code:a.room!.code});await delay();await a.send('ready',{ready:true});await delay();await b.send('ready',{ready:true});await delay();await assert.rejects(a.send('start'),/three/);await c.send('join',{code:a.room!.code});await delay();await assert.rejects(d.send('join',{code:a.room!.code}),/full/);await c.send('ready',{ready:true});await delay();await a.send('start');await delay();assert.equal(a.room!.pool!.balls.length,20);assert.deepEqual(a.room!.pool,b.room!.pool);await assert.rejects(b.send('pool-shot',{angle:0,power:.5}),/turn/);await assert.rejects(a.send('pool-shot',{angle:0,power:2}),/valid/);await a.send('pool-shot',{angle:-Math.PI/2,power:1});await delay();assert.deepEqual(a.room!.pool,c.room!.pool);assert(a.room!.pool!.shot!.frames.length>2);const active=[a,b,c].find(p=>p.room!.you===a.room!.pool!.active)!;await assert.rejects(active.send('pool-shot',{angle:0,power:.5}),/stop/);assert.deepEqual(a.room!.wins,{});
  const snapshot=structuredClone(a.room!.pool),tokens=[a.token,b.token,c.token];for(const p of [a,b,c,d])p.ws.terminate();await runtime.server.close();runtime=await launch(db);a=await player(runtime.url,'Solids',tokens[0]);b=await player(runtime.url,'Stripes',tokens[1]);c=await player(runtime.url,'Hearts',tokens[2]);await delay();assert.deepEqual(a.room!.pool,snapshot);await a.send('leave');await delay();assert.equal(a.room,null);await b.send('leave');await delay();assert.equal(c.room!.pool!.winner,null);assert.equal(c.room!.pool!.active,c.room!.you);assert.equal(c.room!.poolWins?.[c.room!.you]||0,0);assert.deepEqual(c.room!.wins,{});
  }finally{for(const p of [a,b,c,d])p.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}});
+
