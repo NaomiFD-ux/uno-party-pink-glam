@@ -7,7 +7,7 @@ import {WebSocketServer,WebSocket} from 'ws';
 import {createAccounts} from './accounts';
 import {Store} from './store';
 import {shuffleSeating} from '../src/utils/seating';
-import {bindOwner,transformOwnerCard} from './owner-power';
+import {bindOwner,transformOwnerCard,transformGiftCard} from './owner-power';
 import {newRound,moveRound,mustTakeDrawStack,leaveRound,automaticMove,type Round,type Move} from '../src/utils/round';
 import type {RoomView,RoomMessage,WinningPlay,ChatMessage} from '../src/online/protocol';
 
@@ -16,10 +16,11 @@ type Room={pool?:PoolState|null;poolWins?:Record<string,number>;lastActivityAt?:
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 const validText=(x:unknown,max:number)=>typeof x==='string'&&x.trim().length>0&&x.length<=max;
 function avatar(x:unknown){return typeof x==='string'&&x.length<=150000&&(/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(x)||/^https:\/\//.test(x))?x:'';}
-export function createGameServer(options:{databasePath:string;ownerAccountName?:string;allowDevAuth?:boolean;allowedOrigins:string[];secureCookies?:boolean;turnDurationMs?:number;likelyVoteDurationMs?:number;inactivityMs?:number}){
+export function createGameServer(options:{databasePath:string;ownerAccountName?:string;angelAccountName?:string;allowDevAuth?:boolean;allowedOrigins:string[];secureCookies?:boolean;turnDurationMs?:number;likelyVoteDurationMs?:number;inactivityMs?:number}){
  if(process.env.NODE_ENV==='production'&&options.allowDevAuth)throw new Error('Development sign-in cannot run in production.');
  const store=new Store(options.databasePath),rooms=new Map<string,Room>(store.rooms().map((r:Room)=>[r.code,r]));
  const ownerAccountId=bindOwner(store,options.ownerAccountName);
+ const angelAccountId=bindOwner(store,options.angelAccountName);
  const users=new Map<WebSocket,User>(),members=new Map<WebSocket,string>(),timers=new Map<string,ReturnType<typeof setTimeout>>();
  const turnDuration=options.turnDurationMs??15000;
  const voteDuration=options.likelyVoteDurationMs??15000;
@@ -32,7 +33,7 @@ export function createGameServer(options:{databasePath:string;ownerAccountName?:
  const lastSlaps=new Map<string,number>();
  const send=(ws:WebSocket,x:unknown)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(x));};
  const online=(id:string)=>[...users.values()].some(u=>u.id===id);
- function view(r:Room,id:string,verifiedAccount=false):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {...(verifiedAccount&&ownerAccountId===id?{canTransformCards:true}:{}),pool:r.pool,poolWins:r.poolWins||{},serverNow:Date.now(),expiredAt:r.expiredAt,game:r.game||'uno',customQuestions:r.questionsByPlayer?.[id]||(id===r.hostId?r.customQuestions||[]:[]),likelyTopics:r.likelyTopics||[],questionCounts:Object.fromEntries(r.seats.map(s=>[s.id,(r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[])).length])),party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
+ function view(r:Room,id:string,verifiedAccount=false):RoomView{const seats=r.seats.map(s=>({...s,connected:online(s.id)}));return {...(verifiedAccount&&angelAccountId===id?{canUseAngelGift:true}:{}),...(verifiedAccount&&ownerAccountId===id?{canTransformCards:true}:{}),pool:r.pool,poolWins:r.poolWins||{},serverNow:Date.now(),expiredAt:r.expiredAt,game:r.game||'uno',customQuestions:r.questionsByPlayer?.[id]||(id===r.hostId?r.customQuestions||[]:[]),likelyTopics:r.likelyTopics||[],questionCounts:Object.fromEntries(r.seats.map(s=>[s.id,(r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[])).length])),party:r.party?likelyView(r.party,id):null,code:r.code,name:r.name,hostId:r.hostId,you:id,revision:r.revision,handSize:r.handSize,seats,wins:r.wins,message:r.message,messages:r.messages||(r.message?[{...r.message,senderName:r.seats.find(p=>p.id===r.message!.senderId)?.name||'Player'}]:[]),event:r.event,round:r.round?{id:r.roundId,players:r.round.players.map(p=>({...seats.find(s=>s.id===p.id)!,count:p.hand.length,uno:p.hasCalledGlam})),hand:r.round.players.find(p=>p.id===id)?.hand||[],discard:r.round.discard.slice(-2),color:r.round.color,direction:r.round.direction,activeId:r.round.players[r.round.active].id,pending:r.round.pending,pendingType:r.round.pendingType,winner:r.round.winner,turns:r.round.turns,drawnCardId:r.round.players[r.round.active].id===id?r.round.drawnCardId||null:null,startedAt:r.startedAt,turnDeadline:r.turnDeadline,winningPlay:r.winningPlay}:null};}
  function broadcast(r:Room){for(const [ws,code]of members)if(code===r.code){const u=users.get(ws);if(u)send(ws,{type:'room',room:view(r,u.id,accountSessions.has(ws))});}}
  function commit(r:Room,result?:any){r.revision++;if(result)store.saveResult(r,r.roundId,result);else store.save(r);broadcast(r);}
  const accounts=createAccounts(store,{secure:options.secureCookies??process.env.NODE_ENV==='production',origins:options.allowedOrigins,onLogout:(id,sessionHash)=>{for(const [ws,u]of users)if(u.id===id&&(!sessionHash||accountSessions.get(ws)===sessionHash))ws.close(1008,'Please sign in again.');},onProfile:user=>{for(const [ws,u]of users)if(u.id===user.id)users.set(ws,user);for(const r of rooms.values()){const seat=r.seats.find(s=>s.id===user.id);if(seat){Object.assign(seat,user);const p=r.round?.players.find(p=>p.id===user.id);if(p)Object.assign(p,{name:user.name,avatar:user.avatar});commit(r);}}}});
@@ -96,7 +97,7 @@ export function createGameServer(options:{databasePath:string;ownerAccountName?:
    if(input.type==='auth'){
     if(user)throw Error('Already signed in.');const token=input.payload?.token;if(!validText(token,12000))throw Error('Please sign in.');
     const ticket=accounts.consume(token);if(ticket){user=ticket.user;accountSessions.set(ws,ticket.hash);}else if(options.allowDevAuth)user=store.session(hash(token));
-    if(!user)throw Error('Please sign in again.');users.set(ws,user);clearTimeout(deadline);
+    if(!user)throw Error('Please sign in again.');users.set(ws,user);if(accountSessions.has(ws)&&user.id===angelAccountId)send(ws,{type:'personal-powers',angelGift:true});clearTimeout(deadline);
     const room=[...rooms.values()].find(r=>r.seats.some(s=>s.id===user!.id));if(room){expireIdle(room);members.set(ws,room.code);broadcast(room);}send(ws,{type:'reply',id:input.id,ok:true});return;
    }
    if(!user)throw Error('Please sign in.');if(accountSessions.has(ws)&&!accounts.lookup(accountSessions.get(ws)!)){ws.close(1008,'Please sign in again.');throw Error('Please sign in again.');}const p=input.payload||{};
@@ -177,6 +178,11 @@ export function createGameServer(options:{databasePath:string;ownerAccountName?:
       r.expiredAt=undefined;if(r.game==='pool'){if(r.seats.length!==3)throw Error('Pool needs exactly three ready players.');r.round=null;r.party=null;r.pool=newPool(r.seats.map(s=>s.id));r.message=null;commit(r);}else if(r.game==='likely'){r.round=null;r.party=newLikely(fairQuestions(r.seats.map(s=>r.questionsByPlayer?.[s.id]||(s.id===r.hostId?r.customQuestions||[]:[]))),r.likelyTopics);r.party.voteDeadline=Date.now()+voteDuration;r.event=null;r.message=null;commit(r);schedule(r);}else{
       if(r.round||r.lastWinnerId)r.seats=shuffleSeating(r.seats,randomInt);
       r.round=newRound(r.seats.map(s=>({...s,title:'',type:'human',hand:[],hasCalledGlam:false,score:0})),r.handSize,r.lastWinnerId||r.round?.winner||undefined);r.roundId=randomUUID();r.winningPlay=undefined;r.startedAt=Date.now();r.turnDeadline=r.startedAt+3500+turnDuration;r.played={};r.event={id:randomUUID(),actorId:user.id,kind:'start'};r.message=null;commit(r);schedule(r);}
+     }else if(input.type==='angel-gift'){
+      if(!accountSessions.has(ws)||!angelAccountId||user.id!==angelAccountId)throw Error('This action is not available to your account.');
+      if(Date.now()<r.startedAt+3500)throw Error('The cards are still being dealt.');
+      r.round=transformGiftCard(r.round,user.id,randomInt);
+      commit(r);schedule(r);
      }else if(input.type==='transform-card'){
       if(!accountSessions.has(ws)||!ownerAccountId||user.id!==ownerAccountId)throw Error('This action is not available to your account.');
       if(Date.now()<r.startedAt+3500)throw Error('The cards are still being dealt.');

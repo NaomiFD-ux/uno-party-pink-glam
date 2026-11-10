@@ -22,3 +22,10 @@ export function transformOwnerCard(round:Round|null,actorId:string,cardId:unknow
  if(typeof cardId!=='string'||!player?.hand.some(c=>c.id===cardId))throw Error('Choose a card in your hand.');
  return {...round,players:round.players.map(p=>p.id!==actorId?p:{...p,hand:p.hand.map(c=>c.id===cardId?{...c,color:'wild',value:'wild4',score:50}:c)})};
 }
+
+export function transformGiftCard(round:Round|null,actorId:string,pick:(max:number)=>number):Round {
+ if(!round||round.winner)throw Error('This round is not running.');
+ const cards=round.players.find(p=>p.id===actorId)?.hand.filter(c=>c.value!=='wild4')||[];
+ if(!cards.length)throw Error('Your cards are already +4s, love 💗');
+ return transformOwnerCard(round,actorId,cards[pick(cards.length)].id);
+}

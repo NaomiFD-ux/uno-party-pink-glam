@@ -8,7 +8,7 @@ import {join} from 'node:path';
 import {WebSocket} from 'ws';
 import {Store} from './store';
 import {tokenHash} from './accounts';
-import {bindOwner,transformOwnerCard} from './owner-power';
+import {bindOwner,transformOwnerCard,transformGiftCard} from './owner-power';
 import {createGameServer} from './game-server';
 import {newRound} from '../src/utils/round';
 import type {RoomView} from '../src/online/protocol';
@@ -24,12 +24,12 @@ function seed(store:Store,name:string){
 async function connect(url:string,token:string,dev=false){
  const auth=dev?{ticket:token}:await (await fetch(url+'/auth/ticket',{method:'POST',headers:{origin,cookie:'uno_session_v2='+token},body:'{}'})).json();
  const ws=new WebSocket(url.replace('http','ws'),{origin});await once(ws,'open');
- let room:RoomView|null=null;
+ let room:RoomView|null=null,angelGift=false;
  const pending=new Map<string,{resolve:()=>void;reject:(e:Error)=>void}>();
- ws.on('message',bytes=>{const m=JSON.parse(bytes.toString());if(m.type==='room')room=m.room;if(m.type==='reply'){const cb=pending.get(m.id);pending.delete(m.id);if(cb)m.ok?cb.resolve():cb.reject(Error(m.error));}});
+ ws.on('message',bytes=>{const m=JSON.parse(bytes.toString());if(m.type==='personal-powers')angelGift=m.angelGift===true;if(m.type==='room')room=m.room;if(m.type==='reply'){const cb=pending.get(m.id);pending.delete(m.id);if(cb)m.ok?cb.resolve():cb.reject(Error(m.error));}});
  const send=(type:string,payload:unknown={},revision=room?.revision)=>new Promise<void>((resolve,reject)=>{const id=randomUUID();pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,type,payload,revision}));});
  await send('auth',{token:auth.ticket});
- return {ws,send,get room(){return room;}};
+ return {ws,send,get room(){return room;},get angelGift(){return angelGift;}};
 }
 
 test('owner binding uses a permanent existing account ID and survives renaming',()=>{
@@ -96,5 +96,49 @@ test('only the verified owner can transform real saved cards; private action sur
   // Host status does not confer the power.
   await a.send('leave');await pause();assert.equal(b.room!.hostId,friend.id);
   await assert.rejects(b.send('transform-card',{cardId:other.id}),/not available/);
+ }finally{a?.ws.terminate();b?.ws.terminate();dev?.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('Angel gift selects an eligible card only in her hand and leaves round metadata intact',()=>{
+ const r=newRound(['angel','friend'].map(id=>({id,name:id,avatar:'',title:'',type:'human' as const,hand:[],hasCalledGlam:false,score:0})));
+ r.players[0].hand=[{id:'already',color:'wild',value:'wild4',score:50},{id:'gift',color:'red',value:'2',score:2}];
+ const before=structuredClone(r),next=transformGiftCard(r,'angel',()=>0);
+ assert.deepEqual(r,before);assert.equal(next.players[0].hand[1].value,'wild4');assert.equal(next.players[0].hand[1].id,'gift');
+ assert.deepEqual({...next,players:r.players},r);assert.deepEqual(next.players[1],r.players[1]);
+ assert.throws(()=>transformGiftCard(next,'angel',()=>0),/already/);
+ assert.throws(()=>transformGiftCard({...r,winner:'angel'},'angel',()=>0),/not running/);
+});
+
+test('Angel alone gets the private login surprise and random saved +4 gift without changing the round',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-angel-')),path=join(dir,'game.sqlite');
+ const store=new Store(path),angel=seed(store,'Angel'),owner=seed(store,'TheBaddest');
+ store.saveSession(tokenHash('dev-angel'),{id:angel.id,name:'Angel',avatar:''});store.close();
+ const launch=async()=>{const server=createGameServer({databasePath:path,ownerAccountName:'TheBaddest',angelAccountName:'angel',allowedOrigins:[origin],allowDevAuth:true,turnDurationMs:60000});server.http.listen(0,'127.0.0.1');await once(server.http,'listening');return {server,url:`http://127.0.0.1:${(server.http.address() as any).port}`};};
+ let runtime=await launch();let a:Awaited<ReturnType<typeof connect>>|undefined,b:typeof a,dev:typeof a;
+ try{
+  a=await connect(runtime.url,angel.token);b=await connect(runtime.url,owner.token);
+  assert.equal(a.angelGift,true);assert.equal(b.angelGift,false);
+  await b.send('create',{name:'Love table',handSize:7});await a.send('join',{code:b.room!.code});await pause();
+  assert.equal(a.room!.canUseAngelGift,true);assert(!('canUseAngelGift' in b.room!));assert(!('canTransformCards' in a.room!));
+  await assert.rejects(a.send('angel-gift'),/not running/);
+  await a.send('ready',{ready:true});await pause();await b.send('ready',{ready:true});await pause();await b.send('start');await pause();
+  await assert.rejects(a.send('angel-gift'),/dealt/);await pause(3500);
+  dev=await connect(runtime.url,'dev-angel',true);assert.equal(dev.angelGift,false);assert(!('canUseAngelGift' in dev.room!));
+  await assert.rejects(dev.send('angel-gift'),/not available/);dev.ws.terminate();
+  await assert.rejects(b.send('angel-gift',{userId:angel.id,cardId:b.room!.round!.hand[0].id}),/not available/);
+  await assert.rejects(a.send('angel-gift',{},a.room!.revision-1),/changed/);
+  const before=structuredClone(a.room!),ownerBefore=structuredClone(b.room!);
+  await a.send('angel-gift',{cardId:b.room!.round!.hand[0].id});await pause();
+  const after=a.room!,changed=after.round!.hand.filter((c,i)=>c.value!==before.round!.hand[i].value);
+  assert.equal(changed.length,1);assert.equal(changed[0].value,'wild4');assert.equal(changed[0].color,'wild');assert.equal(changed[0].score,50);
+  assert.deepEqual(after.round!.hand.map(c=>c.id),before.round!.hand.map(c=>c.id));
+  assert.deepEqual({...after.round!,hand:before.round!.hand},before.round);
+  assert.deepEqual(after.wins,before.wins);assert.deepEqual(after.event,before.event);assert.deepEqual(after.messages,before.messages);
+  assert.deepEqual(b.room!.round,ownerBefore.round);assert.deepEqual(b.room!.event,ownerBefore.event);
+  const saved=structuredClone(after.round!);a.ws.terminate();b.ws.terminate();await runtime.server.close();
+  runtime=await launch();a=await connect(runtime.url,angel.token);b=await connect(runtime.url,owner.token);await pause();
+  assert.equal(a.angelGift,true);assert.deepEqual(a.room!.round,saved);
+  await a.send('leave');await pause();await assert.rejects(a.send('angel-gift'),/Join a room/);
  }finally{a?.ws.terminate();b?.ws.terminate();dev?.ws.terminate();await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });

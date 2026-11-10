@@ -1,3 +1,4 @@
+import {AngelGiftNotice} from './components/AngelGift';
 import {PoolGame} from './components/PoolGame';
 import {PoolWaitingRoom} from './components/PoolWaitingRoom';
 import {HistoryScreen} from './components/HistoryScreen';
@@ -62,6 +63,7 @@ export default function App() {
   if(inviteAuth)return <AuthScreen initialMode="login" onBack={()=>setInviteAuth(false)} onEnter={enterAccount}/>;
   if(!session)return <AuthScreen onEnter={enterAccount}/>;
   return <div data-screen={currentTab} className="app-shell min-h-screen flex flex-col pb-20 md:pb-6">
+    <AngelGiftNotice enabled={connection?.angelGift===true} accountId={session.id}/>
     <Header currentTab={currentTab} onSelectTab={navigate} userAvatar={profile.avatar} userName={profile.username}/>
     <main className="flex-1 w-full flex flex-col">
       {onlineError&&<div className="online-notice" role="alert">{onlineError}<button aria-label="Dismiss message" onClick={()=>setOnlineError('')}>×</button></div>}
@@ -85,3 +87,4 @@ export default function App() {
     </main><BottomNav currentTab={currentTab} onSelectTab={navigate}/>
   </div>;
 }
+

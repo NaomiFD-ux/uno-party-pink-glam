@@ -1180,3 +1180,10 @@ html.game-viewport-locked .game-screen,html.game-viewport-locked .app-shell[data
 .pool-ball-glint { animation:pool-gloss-shimmer 3.2s ease-in-out infinite alternate; }
 @keyframes pool-gloss-shimmer { from {opacity:.65;} to {opacity:1;} }
 @media(prefers-reduced-motion:reduce) { .pool-ball-glint {animation:none;} }
+
+
+/* Private, nonblocking love note and a touch target only beneath Angel’s deck. */
+.angel-love-note { position:fixed;z-index:250;top:max(76px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(340px,calc(100vw - 28px));display:flex;gap:12px;padding:18px;border:1px solid #ffa3d1;border-radius:23px;background:linear-gradient(135deg,#fff7fc,#ffd8ea);box-shadow:0 12px 40px #51002855;color:#720c45; }
+.angel-love-heart { font-size:31px; }.angel-love-note strong { display:block;font-size:18px; }.angel-love-note p { font-size:13px;line-height:1.5;margin:7px 0; }.angel-love-note small { display:block;font-size:12px; }.angel-love-note button { margin-top:12px;padding:9px 14px;border-radius:999px;background:#be196b;color:white;font-size:13px;font-weight:700;cursor:pointer; }
+.angel-gift-zone { position:absolute;top:calc(100% + 6px);left:-14px;width:calc(100% + 28px);height:54px;min-height:44px;padding:0;border:0;background:transparent;touch-action:manipulation;z-index:2;cursor:default; }.angel-gift-zone:focus-visible { outline:2px dashed #ffb0d8;outline-offset:2px;border-radius:18px; }.angel-gift-zone:disabled { pointer-events:none; }
+.angel-gift-feedback { position:fixed;z-index:260;top:max(18px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);width:min(340px,calc(100vw - 28px));border:1px solid #ffb8dc;border-radius:20px;padding:14px 18px;background:#ffe4f1;color:#760840;box-shadow:0 8px 28px #51002844;font-size:14px;font-weight:650;pointer-events:none; }
