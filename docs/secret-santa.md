@@ -23,6 +23,8 @@ Sattolo permutation, which gives each person equal chances of each other person
 and forms one gifting cycle. Assignments, roster and draw status then lock;
 there is no redraw or post-draw membership editing.
 
+Participants may save an optional wishlist before or after names are drawn. Only their assigned giver can see it, after revealing the recipient; other members and the organizer cannot browse everyone’s wishlists.
+
 Each person presses **Reveal my person** privately. The organizer gets only
 their own recipient, not the group's assignment list. Unrevealed recipients
 are not included in exchange responses. No assignments are sent over room
