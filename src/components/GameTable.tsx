@@ -1,3 +1,4 @@
+import {OwnerCardAction} from './OwnerCardAction';
 import {TableChat} from './TableChat';
 import {animateProfileSlap} from '../utils/slap';
 import {VoiceBubble} from './VoiceBubble';
@@ -96,6 +97,28 @@ export const GameTable: React.FC<GameTableProps> = ({
   useEffect(()=>{if(!botMessage)return;const timer=setTimeout(()=>setBotMessage(null),5000);return()=>clearTimeout(timer);},[botMessage]);
   const chatInput=useRef<HTMLInputElement>(null);
 
+  const [transformCardId,setTransformCardId]=useState<string|null>(null);
+  const [transformError,setTransformError]=useState('');
+  const [transforming,setTransforming]=useState(false);
+  const transformButton=useRef<HTMLButtonElement>(null);
+  const canTransform=!!online?.room.canTransformCards&&phase==='playing'&&!round.winner;
+  const transformCard=round.players[0]?.hand.find(c=>c.id===transformCardId);
+  useEffect(()=>{
+    if(!canTransform||!transformCard)setTransformCardId(null);
+  },[canTransform,transformCardId,transformCard?.id]);
+  useEffect(()=>{
+    if(!transformCardId)return;
+    const previous=document.activeElement as HTMLElement|null;
+    transformButton.current?.focus();
+    return ()=>previous?.focus();
+  },[transformCardId]);
+  const transformSelectedCard=async()=>{
+    if(!online||!transformCardId||transforming)return;
+    setTransforming(true);setTransformError('');
+    try{await online.send('transform-card',{cardId:transformCardId});setBatch([]);setPendingWildCard(null);setTransformCardId(null);}
+    catch(error){setTransformError((error as Error).message);}
+    finally{setTransforming(false);}
+  };
   const [pendingWildCard,setPendingWildCard]=useState<Card|null>(null);
   const [batch,setBatch]=useState<Card[]>([]);
   const reported=useRef<string|null>(null);
@@ -430,8 +453,9 @@ export const GameTable: React.FC<GameTableProps> = ({
               const angle = Math.max(-8, Math.min(8, (rowIndex - mid) * 2));
 
               return (
-                <div
+                <OwnerCardAction
                   key={card.id}
+                  onHold={canTransform?()=>{setTransformError('');setTransformCardId(card.id);}:undefined}
                   className="hand-card-slot transition-transform duration-200 hover:z-30 focus:z-30 shrink-0"
                   style={{'--card-index': index, '--fan-angle': `${angle}deg`, '--fan-rise': `${-Math.max(0, 1 - (mid ? Math.abs(rowIndex-mid)/mid : 0))*9}px`} as React.CSSProperties}
                 >
@@ -447,13 +471,27 @@ export const GameTable: React.FC<GameTableProps> = ({
                   />
                   </div> : <CardView card={card} size="lg" isPlayable={playable} isSelected={batch.some(c=>c.id===card.id)} rotation={angle} elevateOnHover={playable} onClick={()=>handleCardClick(card)}/>}
 
-                </div>
+                </OwnerCardAction>
               );
             })}
           </div>
         </div>
       </div>
 
+      {transformCardId&&transformCard&&canTransform&&createPortal(<div className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4" onKeyDown={event=>{
+        if(event.key==='Escape'&&!transforming)setTransformCardId(null);
+        if(event.key==='Tab'){event.preventDefault();const buttons=event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');const index=Array.from(buttons).indexOf(document.activeElement as HTMLButtonElement);buttons[(index+(event.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus();}
+      }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="transform-title" aria-describedby="transform-description" className="bg-white text-pink-950 rounded-2xl p-6 shadow-xl max-w-sm w-full">
+          <h2 id="transform-title" className="text-xl font-bold">Transform to +4</h2>
+          <p id="transform-description" className="my-3">Turn this {transformCard.color} {transformCard.value} into a Wild Draw Four?</p>
+          {transformError&&<p role="alert" className="my-3">{transformError}</p>}
+          <div className="flex gap-3">
+            <button ref={transformButton} disabled={transforming} onClick={()=>void transformSelectedCard()} className="rounded-xl bg-pink-600 text-white px-4 py-2 disabled:opacity-50">{transforming?'Transforming…':'Transform to +4'}</button>
+            <button disabled={transforming} onClick={()=>setTransformCardId(null)} className="rounded-xl border border-pink-300 px-4 py-2">Cancel</button>
+          </div>
+        </div>
+      </div>,document.body)}
       {drawFlight&&<div className="draw-flight-layer" aria-hidden="true">{Array.from({length:drawFlight.count},(_,i)=><span key={`${drawFlight.id}-${i}`} className="draw-flight-card" style={{left:drawFlight.x,top:drawFlight.y,animationDelay:`${i*80}ms`,'--flight-x':`${drawFlight.dx}px`,'--flight-y':`${drawFlight.dy}px`} as React.CSSProperties}>UNO</span>)}</div>}
       {slapError&&<div className="slap-notice" role="status">{slapError}</div>}
       {messageEffect?.type==='echo'&&<EchoEffect key={messageEffect.id} text={messageEffect.text}/>}
@@ -484,3 +522,4 @@ export const GameTable: React.FC<GameTableProps> = ({
     </div>
   );
 };
+
