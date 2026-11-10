@@ -1,3 +1,4 @@
+import {shuffleSeating} from '../utils/seating';
 import {OwnerCardAction} from './OwnerCardAction';
 import {TableChat} from './TableChat';
 import {animateProfileSlap} from '../utils/slap';
@@ -224,7 +225,7 @@ export const GameTable: React.FC<GameTableProps> = ({
     if(next.active!==0||next.turns!==round.turns){setPendingWildCard(null);setBatch([]);}
   },[online?.room]);
   useEffect(()=>{const m=online?.room.message;if(!m||m.id===lastOnlineMessage.current)return;lastOnlineMessage.current=m.id;if(m.slap){setSlap({targetId:mapId(m.slap.targetId),id:m.id});return;}if(m.voice){setReaction('');setBotMessage(null);enqueueVoice({...m,senderId:mapId(m.senderId)});soundFX.playTap();return;}const senderId=mapId(m.senderId);if(senderId==='player_human'){setReaction(m.text);setReactionVersion(n=>n+1);}else setBotMessage({senderId,text:m.text,id:m.at});if(m.effect!=='normal')setMessageEffect({type:m.effect,text:m.text,id:m.at,senderId});soundFX.playTap();},[online?.room.message?.id]);
-  const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(players,settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
+  const startNewGame=()=>{if(online){void online.send('start').catch(()=>{});return;}flightTimers.current.forEach(clearTimeout);busyRef.current=false;setDrawing(false);setReceivingCards({});setDrawFlight(null);const next=newRound(shuffleSeating(players),settings.initialHandSize,round.winner||undefined);liveRound.current=next;setRound(next);setLocalWinningPlay(undefined);setPhase('shuffle');setBatch([]);setPendingWildCard(null);reported.current=null;};
   useEffect(()=>{if(phase==='shuffle'&&!paused)soundFX.playShuffle();},[phase,paused]);
   useEffect(()=>{if(paused||phase==='playing')return;const id=setTimeout(()=>setPhase(phase==='shuffle'?'deal':'playing'),phase==='shuffle'?950:2400);return()=>clearTimeout(id);},[phase,paused]);
   useEffect(()=>{
