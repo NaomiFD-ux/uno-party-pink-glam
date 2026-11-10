@@ -1,0 +1,62 @@
+import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
+import {Gift,Link,Lock,Plus,Users,ArrowLeft,Sparkles,Check} from 'lucide-react';
+import {santaApi,type SantaInvite,type SantaSummary,type SantaView} from '../online/santa';
+
+export function SecretSanta({accountId}:{accountId:string}) {
+ const [exchanges,setExchanges]=useState<SantaSummary[]>([]),[exchange,setExchange]=useState<SantaView|null>(null);
+ const [invite,setInvite]=useState<SantaInvite|null>(null),[token,setToken]=useState(()=>{const value=new URLSearchParams(location.search).get('santa')||'';return /^[A-Za-z0-9_-]{43}$/.test(value)?value:'';});
+ const [creating,setCreating]=useState(false),[confirmDraw,setConfirmDraw]=useState(false),[confirmRemove,setConfirmRemove]=useState<string|null>(null);
+ const [name,setName]=useState('Christmas with my people'),[budget,setBudget]=useState(''),[date,setDate]=useState(`${new Date().getFullYear()}-12-25`);
+ const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ const working=useRef(false),selectedId=useRef<string|null>(null),version=useRef(0);
+ selectedId.current=exchange?.id||null;
+ const list=useCallback(async()=>{const values=await santaApi.list();setExchanges(values);},[]);
+ useEffect(()=>{let alive=true;setLoading(true);setError('');setExchange(null);setInvite(null);
+  Promise.all([santaApi.list(),token?santaApi.preview(token):Promise.resolve(null)]).then(async([values,preview])=>{
+   const saved=preview?.exchangeId?await santaApi.get(preview.exchangeId):null;
+   if(alive){setExchanges(values);setInvite(saved?null:preview);setExchange(saved);}
+  }).catch(e=>{if(alive)setError(e.message);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};
+ },[accountId,token]);
+ // Refresh the roster while people join. A stale review can never draw names.
+ useEffect(()=>{const id=exchange?.id;if(!id)return;let alive=true;
+  const refresh=async()=>{if(working.current||document.visibilityState!=='visible')return;const before=version.current;try{const next=await santaApi.get(id);if(alive&&selectedId.current===id&&before===version.current){setExchange(next);if(next.revision!==exchange?.revision){setConfirmDraw(false);setConfirmRemove(null);}}}catch(e){if(alive)setError((e as Error).message);}};
+  const timer=setInterval(()=>void refresh(),10000);window.addEventListener('focus',refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',refresh);};
+ },[exchange?.id,exchange?.revision]);
+ const run=async(action:()=>Promise<void>)=>{if(working.current)return;working.current=true;version.current++;setBusy(true);setError('');setNotice('');try{await action();}catch(e){setError((e as Error).message);}finally{working.current=false;setBusy(false);}};
+ const home=()=>{version.current++;setExchange(null);setInvite(null);setToken('');setCreating(false);setConfirmDraw(false);setConfirmRemove(null);const url=new URL(location.href);url.searchParams.set('santa','home');history.replaceState({},'',url.pathname+url.search);void run(list);};
+ const open=(id:string)=>void run(async()=>{setExchange(await santaApi.get(id));setCreating(false);setInvite(null);setConfirmDraw(false);setConfirmRemove(null);});
+ const create=(event:FormEvent)=>{event.preventDefault();void run(async()=>{setExchange(await santaApi.create({name,budget,date}));setCreating(false);await list();});};
+ const act=(action:'draw'|'reveal'|'leave'|'remove',extra:Record<string,unknown>={})=>void run(async()=>{
+  if(!exchange)return;const saved=await santaApi.act(exchange.id,action,{revision:exchange.revision,...extra});
+  setExchange(saved||null);setConfirmDraw(false);setConfirmRemove(null);await list();
+ });
+ const owner=exchange?.ownerId===accountId;
+ const shareLink=exchange?.inviteToken?`${location.origin}/?santa=${encodeURIComponent(exchange.inviteToken)}`:'';
+ const friendlyDate=(value:string)=>value?new Date(value+'T12:00:00').toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'}):'Date to be decided';
+ const metadata=(value:{budget:string;date:string})=><div className="santa-meta"><span>{friendlyDate(value.date)}</span><span>{value.budget?`Gift budget: ${value.budget}`:'No budget set'}</span></div>;
+ return <section className="santa-page">
+  <header className="santa-heading"><div><span className="santa-eyebrow">A LITTLE CHRISTMAS MAGIC</span><h1><Gift aria-hidden="true"/>Secret Santa</h1><p>Your people. A little surprise. A gift picked with love.</p></div>{!exchange&&!invite&&!creating&&<button className="santa-primary" disabled={busy||loading} onClick={()=>setCreating(true)}><Plus size={18}/>New exchange</button>}</header>
+  {(exchange||invite||creating)&&<button className="santa-back" disabled={busy} onClick={home}><ArrowLeft size={17}/>My exchanges</button>}
+  {error&&<div className="santa-error" role="alert">{error}<button onClick={()=>setError('')} aria-label="Dismiss Secret Santa error">×</button></div>}
+  {notice&&<p className="santa-notice" role="status">{notice}</p>}
+  {loading?<div className="santa-card" role="status">Finding your Christmas plans…</div>:creating?<form className="santa-card santa-create" onSubmit={create}>
+   <div className="santa-card-icon"><Gift/></div><h2>Bring your people together</h2><p>You’ll join as the organizer. Invite 2–49 more people with your private link, then draw names when everyone is in.</p>
+   <label>Exchange name<input required maxLength={60} value={name} onChange={e=>setName(e.target.value)}/></label>
+   <div className="santa-form-row"><label>Gift budget <small>(optional)</small><input maxLength={60} placeholder="e.g. $30" value={budget} onChange={e=>setBudget(e.target.value)}/></label><label>Exchange date<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label></div>
+   <p className="santa-privacy"><Lock size={16}/>Everyone needs their own Game Night account. Only they can reveal who they’re buying for—even the organizer can’t see everyone’s matches.</p>
+   <button className="santa-primary" disabled={busy||!name.trim()}>{busy?'Creating…':'Create & get invite link'}</button>
+  </form>:invite?<div className="santa-card santa-invitation"><div className="santa-card-icon"><Gift/></div><span className="santa-eyebrow">YOU’RE INVITED</span><h2>{invite.name}</h2><p>{invite.organizer} is bringing everyone together for Secret Santa.</p>{metadata(invite)}<p><Users size={18}/>{invite.count} {invite.count===1?'person has':'people have'} joined</p>{invite.drawn?<p className="santa-privacy">Names have already been drawn, so this exchange is closed to new participants.</p>:<><p className="santa-privacy">Join with this account to be included. You’ll receive one private assignment after the organizer draws names.</p><button className="santa-primary" disabled={busy} onClick={()=>void run(async()=>{const saved=await santaApi.join(token);setExchange(saved);setInvite(null);await list();})}>{busy?'Joining…':'Count me in 🎁'}</button></>}</div>:exchange?<>
+   <section className="santa-card santa-exchange"><div className="santa-exchange-title"><div><span className="santa-eyebrow">{exchange.drawn?'THE SECRET IS YOURS':'GATHERING THE GROUP'}</span><h2>{exchange.name}</h2></div><span className={`santa-badge ${exchange.drawn?'drawn':''}`}>{exchange.drawn?'Names drawn':'Invites open'}</span></div>{metadata(exchange)}
+    {shareLink&&<div className="santa-share"><label>Private invitation link<input readOnly value={shareLink} onFocus={e=>e.target.select()}/></label><button className="santa-secondary" disabled={busy} onClick={()=>void run(async()=>{try{await navigator.clipboard.writeText(shareLink);setNotice('Invite link copied. Send it to your people!');}catch{setNotice('Select and copy the invitation link above.');}})}><Link size={17}/>Copy link</button><small>Send this link yourself. Friends can join without being in an UNO room.</small></div>}
+    <div className="santa-roster-heading"><h3><Users size={19}/>{exchange.count} {exchange.count===1?'person':'people'} in the exchange</h3><button className="santa-text-button" disabled={busy} onClick={()=>open(exchange.id)}>Refresh</button></div>
+    <ul className="santa-roster">{exchange.members.map(member=><li key={member.id}><img src={member.avatar} alt=""/><span><strong>{member.name}{member.id===accountId?' (you)':''}</strong>{member.id===exchange.ownerId&&<small>Organizer · participating</small>}</span>{exchange.drawn?<Check className="santa-member-check" size={17}/>:owner&&member.id!==accountId&&<button className="santa-text-button" disabled={busy} onClick={()=>setConfirmRemove(member.id)} aria-label={`Remove ${member.name}`}>Remove</button>}</li>)}</ul>
+    {confirmRemove&&<div className="santa-confirm" role="group" aria-label="Confirm participant removal"><p>Remove {exchange.members.find(m=>m.id===confirmRemove)?.name} before drawing names?</p><button className="santa-secondary" disabled={busy} onClick={()=>act('remove',{memberId:confirmRemove})}>Remove participant</button><button className="santa-text-button" onClick={()=>setConfirmRemove(null)}>Cancel</button></div>}
+    {!exchange.drawn&&<div className="santa-before-draw"><p><Lock size={16}/>No self matches. Everyone gives one gift and receives one. Once names are drawn, the group and assignments are locked.</p>{owner?<><button className="santa-primary" disabled={busy||exchange.count<3} onClick={()=>setConfirmDraw(true)}><Sparkles size={18}/>Draw names</button>{exchange.count<3&&<small>At least 3 people need to join first.</small>}{confirmDraw&&<div className="santa-confirm" role="group" aria-label="Review before drawing names"><h3>Is everyone here?</h3><p>Draw names for these {exchange.count} people? You won’t be able to add or remove people or redraw afterward.</p><button className="santa-primary" disabled={busy} onClick={()=>act('draw')}>{busy?'Drawing…':'Yes, draw names now'}</button><button className="santa-text-button" disabled={busy} onClick={()=>setConfirmDraw(false)}>Not yet</button></div>}</>:<><p>Your organizer will draw names when everyone has joined.</p><button className="santa-text-button" disabled={busy} onClick={()=>act('leave')}>Leave before names are drawn</button></>}</div>}
+   </section>
+   {exchange.drawn&&<section className="santa-card santa-reveal"><span className="santa-card-icon"><Gift/></span>{exchange.recipient?<><span className="santa-eyebrow">YOU’RE BUYING A GIFT FOR</span><img className="santa-recipient-avatar" src={exchange.recipient.avatar} alt=""/><h2>{exchange.recipient.name}</h2><p>A little thoughtfulness goes a long way. Keep your person a surprise! 💗</p>{metadata(exchange)}</>:<><h2>Your secret assignment is ready</h2><p>Make sure nobody’s peeking—this reveal is just for you.</p><button className="santa-primary" disabled={busy} onClick={()=>act('reveal')}><Lock size={17}/>{busy?'Opening…':'Reveal my person'}</button></>}<small>Your assignment stays saved to your account.</small></section>}
+  </>:<>
+   <div className="santa-how"><span>1. Invite your group</span><span>2. Draw names once</span><span>3. Reveal your person privately</span></div>
+   {exchanges.length?<div className="santa-exchange-grid">{exchanges.map(ex=><button className="santa-card santa-list-card" key={ex.id} disabled={busy} onClick={()=>open(ex.id)}><Gift/><span className="santa-badge">{ex.drawn?'Ready to reveal':'Invites open'}</span><h2>{ex.name}</h2><span>{ex.count} people · {friendlyDate(ex.date)}</span><strong>{ex.drawn?'See my assignment':'Open exchange'} →</strong></button>)}</div>:<div className="santa-card santa-empty"><div className="santa-card-icon"><Gift/></div><h2>Make Christmas a little more magical</h2><p>Start an exchange, share the private link, and let everyone discover who they’re shopping for.</p><button className="santa-primary" disabled={busy} onClick={()=>setCreating(true)}>Start Secret Santa</button></div>}
+  </>}
+ </section>;
+}

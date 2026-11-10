@@ -32,3 +32,11 @@ Pool ball sprites: `public/pool/ball-sprites.webp`, built-in image generation. P
 
 
 `public/pool/eight-ball.webp`: built-in image generation. Prompt: single glossy black 8 billiard ball, transparent background, ivory number badge facing camera, polished resin with white softbox and pink neon reflections, no other objects.
+
+
+
+## Secret Santa homepage banner
+
+Built-in image generation. Final optimized asset: `public/game-night/secret-santa-hero.webp`. Local source: `output/imagegen/secret-santa-banner-source.png`. The banner is decorative; heading, gold ribbon label, description and exchange button remain live HTML. Secret Santa appears under the greeting, and the existing Good friends / Great games invitation appears at the bottom of the homepage.
+
+Final prompt: Create a premium 3D Christmas website banner background for a glamorous pink Game Night dashboard, wide landscape about 2.5:1. Deep burgundy wine and raspberry velvet with soft gold glints. At the left third, a large glossy blush-pink gift box with a rich magenta satin bow, ivory hanging heart tag, fluffy white snow, pink glass baubles and delicate evergreen sprigs. Keep the right 60 percent dark burgundy with clean negative space for live heading and button. Luxurious product photography / polished 3D render, satin materials, hot pink, blush, burgundy and warm gold. No words, letters, numbers, logos, UI, borders or buttons.
