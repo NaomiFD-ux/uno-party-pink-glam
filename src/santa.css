@@ -13,3 +13,16 @@
 .santa-hero-button:hover { filter:brightness(1.08); }.santa-hero-button:focus-visible { outline:3px solid #ffe3a3;outline-offset:4px; }
 .night-hero-bottom { margin:26px 0 20px; }
 @media(max-width:767px) { .santa-dashboard-hero { min-height:218px;border-radius:25px;margin-bottom:25px;background-position:34% center; }.santa-hero-copy { width:62%;padding:22px 10px 18px; }.santa-hero-copy h2 { font-size:clamp(31px,8.3vw,49px);letter-spacing:-1.8px;margin-bottom:7px; }.santa-hero-sparkle { font-size:16px;right:6%;top:15px; }.santa-hero-ribbon { font-size:14px;padding:5px 18px;margin-bottom:7px; }.santa-hero-copy p { font-size:11px;line-height:1.45;margin:3px 0 13px; }.santa-hero-button { min-height:41px;font-size:12px;padding:10px 16px;gap:6px; }.santa-hero-button svg { width:16px;height:16px; }.night-hero-bottom { margin-top:24px; } }
+
+/* The festive details stay independent of the live title and button. */
+.santa-title-wrap { position:relative;display:inline-block; }
+.santa-title-hat { position:absolute;left:-27px;top:-22px;width:66px;height:59px;transform:rotate(-17deg);filter:drop-shadow(0 3px 3px #30000b66);pointer-events:none;z-index:2; }
+.santa-hero-ribbon { isolation:isolate;min-width:195px;border-radius:1px;box-shadow:0 4px 8px #22000777,inset 0 1px 0 #fff1a7; }
+.santa-hero-ribbon::before,.santa-hero-ribbon::after { content:'';position:absolute;z-index:-1;top:9px;width:30px;height:100%;background:linear-gradient(#d99522,#f0b13e);box-shadow:0 3px 4px #23000955; }
+.santa-hero-ribbon::before { left:-22px;clip-path:polygon(0 0,100% 0,100% 100%,0 100%,25% 50%); }
+.santa-hero-ribbon::after { right:-22px;clip-path:polygon(0 0,100% 0,75% 50%,100% 100%,0 100%); }
+.santa-hero-corner { position:absolute;left:0;bottom:0;width:155px;height:105px;pointer-events:none;z-index:2; }
+.santa-holly-sprig { position:absolute;width:125px;height:81px;left:-6px;bottom:-9px;transform:rotate(-7deg);filter:drop-shadow(0 1px 3px #fff9); }
+.santa-corner-flake { position:absolute;color:#fff8ff;filter:drop-shadow(0 0 5px #ffabdb);stroke-width:1.7; }.santa-corner-flake.large { left:8px;bottom:41px;width:32px;height:32px;transform:rotate(12deg); }.santa-corner-flake.small { left:112px;bottom:12px;width:21px;height:21px;transform:rotate(-8deg); }
+.santa-corner-sparkles { position:absolute;left:86px;bottom:58px;width:27px;height:27px;color:#ffe7a3;filter:drop-shadow(0 0 6px #fdd07c); }.santa-corner-star { position:absolute;left:127px;bottom:44px;color:white;font-size:15px;filter:drop-shadow(0 0 5px #fff); }
+@media(max-width:767px) { .santa-title-hat { width:43px;height:39px;left:-17px;top:-14px; }.santa-hero-copy { padding-top:27px; }.santa-hero-ribbon { min-width:140px; }.santa-hero-ribbon::before,.santa-hero-ribbon::after { top:6px;width:23px; }.santa-hero-ribbon::before { left:-17px; }.santa-hero-ribbon::after { right:-17px; }.santa-hero-corner { width:125px;height:90px; }.santa-holly-sprig { width:102px;height:67px;left:-8px;bottom:-9px; }.santa-corner-flake.large { width:25px;height:25px;left:5px;bottom:35px; }.santa-corner-flake.small { left:91px;bottom:12px;width:17px;height:17px; }.santa-corner-sparkles { left:67px;bottom:51px;width:23px;height:23px; }.santa-corner-star { left:103px;bottom:39px;font-size:12px; } }
