@@ -361,3 +361,5 @@
 .gift-manual-fields label{min-width:0;margin-top:0}
 .gift-manual-fields .gift-field-label{flex-wrap:wrap;gap:4px}
 .gift-fetch-details{display:block;margin:-5px 0 10px auto;border:0;background:transparent;color:#87143c;text-decoration:underline;font-weight:700}
+
+.santa-video-dialog::backdrop{backdrop-filter:none}
