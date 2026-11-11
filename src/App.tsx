@@ -37,6 +37,12 @@ export default function App() {
   const [settings,setSettings] = useState<GameSettings>(()=>{try {return {...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem('glam_game_settings')||'{}')};}catch{return DEFAULT_SETTINGS;}});
   const [roundFelt,setRoundFelt]=useState(settings.tableFelt);
   const [currentTab,setCurrentTab] = useState<AppTab>(()=>new URLSearchParams(location.search).has('santa')?'santa':'lobby');
+  const santaIntroAudio=useRef<HTMLAudioElement>(null);
+  useEffect(()=>{
+    const audio=santaIntroAudio.current;
+    if(currentTab!=='santa'||!session)return;
+    return ()=>audio?.pause();
+  },[currentTab,session?.id]);
   const [previousTab,setPreviousTab] = useState<AppTab>('lobby');
   const [roomOpen,setRoomOpen] = useState(false); const [matchActive,setMatchActive] = useState(false); const [matchKey,setMatchKey] = useState(0);
   const [practiceGame,setPracticeGame]=useState<'uno'|'pool'>('uno');
@@ -56,7 +62,16 @@ export default function App() {
   useEffect(()=>{if(onlineRoom?.round?.id)setRoundFelt(settings.tableFelt);},[onlineRoom?.round?.id]);
   const updateSettings=(s:Partial<GameSettings>)=>setSettings(prev=>({...prev,...s}));
   const openSettings=()=>{if(currentTab!=='settings')setPreviousTab(currentTab);setCurrentTab('settings');};
-  const navigate=(tab:AppTab)=>{const url=new URL(location.href);if(tab==='santa')url.searchParams.set('santa','home');else url.searchParams.delete('santa');history.replaceState({},'',url.pathname+url.search+url.hash);if(tab==='settings'){openSettings();return;} if(tab==='table'&&onlineRoom){setCurrentTab(onlineRoom.round||onlineRoom.party||onlineRoom.pool?'table':'lobby');return;} if(tab==='table'&&!matchActive){setRoomOpen(true);setCurrentTab('lobby');return;} setRoomOpen(false);setCurrentTab(tab);};
+  const navigate=(tab:AppTab)=>{
+    if(tab==='santa'&&currentTab!=='santa'){
+      const audio=santaIntroAudio.current;
+      if(audio){
+        if(audio.currentTime>0)audio.currentTime=0;
+        // Safari requires play() to run inside the original tap.
+        void audio.play().catch(()=>{});
+      }
+    }
+    const url=new URL(location.href);if(tab==='santa')url.searchParams.set('santa','home');else url.searchParams.delete('santa');history.replaceState({},'',url.pathname+url.search+url.hash);if(tab==='settings'){openSettings();return;} if(tab==='table'&&onlineRoom){setCurrentTab(onlineRoom.round||onlineRoom.party||onlineRoom.pool?'table':'lobby');return;} if(tab==='table'&&!matchActive){setRoomOpen(true);setCurrentTab('lobby');return;} setRoomOpen(false);setCurrentTab(tab);};
   const updateProfile=async(updates:Partial<UserProfile>)=>{if(session&&session.id!=='guest'){await saveRemoteProfile(session.id,updates);const saved=await remoteProfile(session.id);if(saved)setProfile(prev=>({...prev,...saved,avatar:saved.avatar||prev.avatar}));}else setProfile(prev=>({...prev,...updates}));};
   const logout=()=>{void signOut().then(()=>{setSession(null);setMatchActive(false);setRoomOpen(false);}).catch(e=>setOnlineError(e.message));};
   const enterAccount=(user:{id:string;name:string;avatar?:string},remember:boolean)=>{saveSession(user,remember);setProfile({...loadProfile(user.id,user.name),...(user.avatar?{avatar:user.avatar}:{})});setSession(user);setCurrentTab(new URLSearchParams(location.search).has('santa')?'santa':'lobby');setInviteAuth(false);};
@@ -64,10 +79,11 @@ export default function App() {
   if(inviteAuth)return <AuthScreen initialMode="login" onBack={()=>setInviteAuth(false)} onEnter={enterAccount}/>;
   if(!session)return <AuthScreen onEnter={enterAccount}/>;
   return <div data-screen={currentTab} className="app-shell min-h-screen flex flex-col pb-20 md:pb-6">
+    <audio ref={santaIntroAudio} src="/audio/secret-santa-intro.mp3" preload="none" loop/>
     <AngelGiftNotice enabled={connection?.angelGift===true} accountId={session.id}/>
     <Header currentTab={currentTab} onSelectTab={navigate} userAvatar={profile.avatar} userName={profile.username}/>
     <main className="flex-1 w-full flex flex-col">
-      {currentTab==='santa'&&<SantaExperience key={session.id} accountId={session.id} onHome={()=>navigate('lobby')} onLogin={()=>{clearSession();setSession(null);}}/>}
+      {currentTab==='santa'&&<SantaExperience introAudio={santaIntroAudio} key={session.id} accountId={session.id} onHome={()=>navigate('lobby')} onLogin={()=>{clearSession();setSession(null);}}/>}
       {onlineError&&<div className="online-notice" role="alert">{onlineError}<button aria-label="Dismiss message" onClick={()=>setOnlineError('')}>×</button></div>}
       {onlineRoom&&connection?.status!=='connected'&&<p className="online-notice" role="status">Reconnecting… {onlineRoom.pool?'your pool table is saved.':onlineRoom.party?'your seat and vote are saved.':'your seat and cards are saved.'}</p>}
       {session.id==='guest'&&<p className="local-account-note online-test-note">Guest preview · create an account to play with friends</p>}
