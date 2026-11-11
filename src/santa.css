@@ -303,7 +303,15 @@
  background:#24070e;
  border:1px solid #f9bdac;
 }
-.gift-item-recipient .gift-item-store-apple{color:#251313;background:#f9e9d7;border-color:#ffe5d5}
+.gift-item-recipient .gift-item-store-apple{
+ display:grid;
+ place-items:center;
+ width:clamp(30px,8vw,56px);
+ color:#251313;
+ background:#f9e9d7;
+ border-color:#ffe5d5;
+}
+.gift-item-store-apple img{width:auto;height:clamp(15px,4.5vw,24px)}
 .gift-item-recipient .gift-store-actions a{flex:none;padding:5px}
 
 .gift-recipient-note{padding:12px;margin:0;color:#ffe2e6}
@@ -326,14 +334,19 @@
  .gift-item-own .gift-item-actions{flex-direction:row;gap:0}
  .gift-item-own .gift-item-actions button,.gift-item-own .gift-item-actions a{padding:5px}
  .gift-recipient-list .gift-item-recipient{
-  grid-template-columns:minmax(56px,28%) minmax(0,1fr) minmax(66px,auto);
-  gap:5px 8px;
+  grid-template-columns:minmax(48px,22%) minmax(0,1fr) auto auto;
+  gap:clamp(4px,1.5vw,8px);
  }
- .gift-item-recipient>img,.gift-item-recipient>.gift-item-placeholder,.gift-item-recipient .gift-item-copy{grid-row:span 2}
- .gift-item-recipient .gift-store-actions{justify-content:flex-end;gap:2px;align-self:end}
- .gift-item-recipient .gift-item-store{max-width:58px}
- .gift-item-recipient .gift-store-actions a{padding:4px}
- .gift-item-recipient .gift-item-actions .gift-purchase-button{max-width:76px;font-size:9px;justify-self:end;align-self:start}
+ .gift-item-recipient .gift-store-actions{justify-content:flex-end;gap:2px}
+ .gift-item-recipient .gift-item-store{max-width:clamp(34px,11vw,54px)}
+ .gift-item-recipient .gift-store-actions a{padding:5px 2px}
+ .gift-item-recipient .gift-item-actions .gift-purchase-button{
+  min-width:0;
+  width:clamp(54px,16vw,72px);
+  max-width:none;
+  font-size:9px;
+  line-height:1.2;
+ }
  .gift-recipient-switch button{font-size:12px}
 }
 .santa-shopping-wishlist .gift-recipient-switch .santa-secondary{

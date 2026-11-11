@@ -39,7 +39,7 @@ function ItemCard({item,onDelete,onNote,purchased,onPurchase,busy=false}:{
   </div>
   <div className="gift-item-actions">
    <div className="gift-store-actions">
-    {!onDelete&&(item.store||appleStore)&&<span className={`gift-item-store${appleStore?' gift-item-store-apple':''}`} title={item.store}>{appleStore?'Apple':item.store}</span>}
+    {!onDelete&&(item.store||appleStore)&&<span className={`gift-item-store${appleStore?' gift-item-store-apple':''}`} title={appleStore?'Apple':item.store}>{appleStore?<img src="/game-night/wishlist-apple-mark.webp" alt="Apple"/>:item.store}</span>}
     {item.url&&<a href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in store`}><ExternalLink size={21}/></a>}
    </div>
    {onDelete&&<button disabled={busy} onClick={onDelete} aria-label={`Remove ${item.title} from wishlist`}><Trash2 size={21}/></button>}
