@@ -1,0 +1,15 @@
+import {Bell,Calendar,CheckCircle2,Gift,Lock,Tag,Users} from 'lucide-react';
+import type {SantaView} from '../online/santa';
+const dateLabel=(date:string)=>date?new Date(date+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):'Not set';
+export function SantaDrawnHub({exchange,busy,onReveal,onWishlist,onOwnWishlist,onDetails,onHome}:{exchange:SantaView;busy:boolean;onReveal:()=>void;onWishlist:()=>void;onOwnWishlist:()=>void;onDetails:()=>void;onHome?:()=>void}){
+ const recipient=exchange.revealViewed?exchange.recipient:undefined;
+ return <section className="santa-drawn-hub">
+  {!exchange.revealViewed?<section className="santa-ready-banner"><img src="/game-night/santa-names-ready.webp" alt=""/><div><h2><CheckCircle2/>Names Drawn!</h2><p>You’ve been assigned your Secret Santa!</p><button className="santa-primary" disabled={busy} onClick={onReveal}><Gift size={17}/>Reveal My Person</button></div></section>:recipient&&<section className="santa-shopping-banner"><img className="santa-shopping-background" src="/game-night/santa-shopping-banner.webp" alt=""/><img className="santa-shopping-avatar" src={recipient.avatar} alt={`${recipient.name}’s profile picture`}/><div><span>YOU’RE SHOPPING FOR</span><h2>{recipient.name} ♡</h2><button className="santa-primary" onClick={onWishlist}><Gift size={17}/>View {recipient.name}’s Wishlist <span aria-hidden="true">→</span></button></div></section>}
+  <div className="santa-drawn-panels"><section className="santa-drawn-details"><button className="santa-drawn-panel-heading" onClick={onDetails}><Calendar size={18}/>Exchange Details <span>→</span></button><dl><dt><Tag size={16}/>Budget</dt><dd>{exchange.budget||'Not set'}</dd><dt><Calendar size={16}/>Gift Exchange</dt><dd>{dateLabel(exchange.date)}</dd><dt><CheckCircle2 className="santa-detail-status" size={17}/>Status</dt><dd>{exchange.completed?'Completed':'Names Drawn'}</dd></dl></section><section className="santa-drawn-members"><h2><Users size={18}/>Participants ({exchange.count})</h2><ul>{exchange.members.map(person=><li key={person.id}><img src={person.avatar} alt=""/><span>{person.id===exchange.you?'You':person.name}{person.id===exchange.ownerId?' (Host) 👑':''}</span></li>)}</ul></section></div>
+  {exchange.remindersEnabled&&<section className="santa-drawn-reminder"><Bell size={24}/><div><h3>Reminders</h3><p>Shop, wrap, and get your gift ready{exchange.date?` for ${dateLabel(exchange.date)}`:''}!</p></div></section>}
+  {exchange.revealViewed&&<button className="santa-text-button santa-drawn-own-wishlist" onClick={onReveal}>Replay my reveal</button>}
+  {exchange.wishlistEnabled&&<button className="santa-text-button santa-drawn-own-wishlist" onClick={onOwnWishlist}>Update my own wishlist</button>}
+  {!exchange.revealViewed&&<p className="gift-private-hint"><Lock size={13}/>Only you can see who you’re shopping for.</p>}
+  {onHome&&<button className="santa-primary santa-back-game-night" onClick={onHome}><Gift size={19}/>Back to Game Night</button>}
+ </section>;
+}

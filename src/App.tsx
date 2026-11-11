@@ -1,4 +1,4 @@
-import {SecretSanta} from './components/SecretSanta';
+import {SantaExperience} from './components/SantaWelcome';
 import {AngelGiftNotice} from './components/AngelGift';
 import {PoolGame} from './components/PoolGame';
 import {PoolWaitingRoom} from './components/PoolWaitingRoom';
@@ -67,7 +67,7 @@ export default function App() {
     <AngelGiftNotice enabled={connection?.angelGift===true} accountId={session.id}/>
     <Header currentTab={currentTab} onSelectTab={navigate} userAvatar={profile.avatar} userName={profile.username}/>
     <main className="flex-1 w-full flex flex-col">
-      {currentTab==='santa'&&(session.id==='guest'?<section className="santa-account-prompt"><h1>Join your Secret Santa 🎁</h1><p>Log in or create your own account to keep your gift assignment private.</p><button className="santa-primary" onClick={()=>{clearSession();setSession(null);}}>Log in or sign up</button></section>:<SecretSanta accountId={session.id}/>)}
+      {currentTab==='santa'&&<SantaExperience key={session.id} accountId={session.id} onHome={()=>navigate('lobby')} onLogin={()=>{clearSession();setSession(null);}}/>}
       {onlineError&&<div className="online-notice" role="alert">{onlineError}<button aria-label="Dismiss message" onClick={()=>setOnlineError('')}>×</button></div>}
       {onlineRoom&&connection?.status!=='connected'&&<p className="online-notice" role="status">Reconnecting… {onlineRoom.pool?'your pool table is saved.':onlineRoom.party?'your seat and vote are saved.':'your seat and cards are saved.'}</p>}
       {session.id==='guest'&&<p className="local-account-note online-test-note">Guest preview · create an account to play with friends</p>}
