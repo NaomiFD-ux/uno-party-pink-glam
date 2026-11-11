@@ -44,7 +44,7 @@ test('separate account invitations, locked draw, private reveal and persistence 
   const preview=(await angel('/santa/invite/'+token)).data;assert.equal(preview.count,1);assert.equal(preview.organizer,'Host');assert(!('members' in preview));assert(!('assignments' in preview));
   assert.equal((await anon('/santa/invite/'+token)).status,401);
   assert.equal((await angel('/santa/join',{token:'bad'})).status,404);
-  ex=(await angel('/santa/join',{token,userId:people[3].id})).data.exchange;assert(ex.members.some(p=>p.id===people[1].id));assert(!ex.members.some(p=>p.id===people[3].id));assert(!('inviteToken' in ex));
+  ex=(await angel('/santa/join',{token,userId:people[3].id})).data.exchange;assert(ex.members.some(p=>p.id===people[1].id));assert(!ex.members.some(p=>p.id===people[3].id));assert.equal(ex.inviteToken,token);
   const oldRevision=ex.revision;ex=(await friend('/santa/join',{token})).data.exchange;assert.equal(ex.count,3);
   assert.equal((await angel('/santa/join',{token})).data.exchange.count,3,'joining twice must not duplicate a participant');
   assert.equal((await host(`/santa/${id}/draw`,{revision:oldRevision})).status,409);
@@ -73,14 +73,14 @@ test('separate account invitations, locked draw, private reveal and persistence 
  }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });
 
-test('participants may leave or be removed before the draw; revoked sessions cannot reveal',async()=>{
+test('participants commit when joining; host removal and revoked sessions are enforced',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'uno-santa-roster-')),path=join(dir,'game.sqlite'),store=new Store(path);
  const people=['Organizer','Second','Third','Fourth'].map(name=>seed(store,name));store.close();const runtime=await launch(path);
  try{
   const [host,second,third,fourth]=people.map(p=>client(runtime.url,p.token));let ex=(await host('/santa',{name:'Roster test'})).data.exchange;const id=ex.id,token=ex.inviteToken;
-  assert.equal((await host(`/santa/${id}/leave`,{revision:ex.revision})).status,400);
+  assert.equal((await host(`/santa/${id}/leave`,{revision:ex.revision})).status,409);
   ex=(await second('/santa/join',{token})).data.exchange;ex=(await third('/santa/join',{token})).data.exchange;
-  const stale=ex.revision;assert.equal((await second(`/santa/${id}/leave`,{revision:ex.revision})).status,200);
+  const stale=ex.revision;assert.equal((await second(`/santa/${id}/leave`,{revision:ex.revision})).status,409);assert.equal((await host(`/santa/${id}/remove`,{revision:ex.revision,memberId:people[1].id})).status,200);
   assert.equal((await host(`/santa/${id}/draw`,{revision:stale})).status,409);
   assert.equal((await second(`/santa/${id}`)).status,404);
   ex=(await host(`/santa/${id}`)).data.exchange;ex=(await host(`/santa/${id}/remove`,{revision:ex.revision,memberId:people[2].id})).data.exchange;assert.equal(ex.count,1);
@@ -115,5 +115,109 @@ test('wishlists stay private to their author and assigned giver, including edits
   for(const request of clients){const own=(await request(`/santa/${id}`)).data.exchange;if(own.recipient.id===people[1].id)assert.equal(own.recipient.wishlist,'Updated after the draw');}
   await runtime.server.close();runtime=await launch(path);clients=people.map(p=>client(runtime.url,p.token));
   assert.equal((await clients[1](`/santa/${id}`)).data.exchange.yourWishlist,'Updated after the draw');
+ }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('multiple groups, shared member invites, settings, and isolated private product lists',async()=>{
+ const {createServer}=await import('node:http'),{createSanta}=await import('./santa');
+ const dir=mkdtempSync(join(tmpdir(),'uno-santa-items-')),path=join(dir,'game.sqlite'),store=new Store(path);
+ const people=['Host','Second','Third','Other'].map(name=>seed(store,name));
+ const santa=createSanta(store,{session:(req:any)=>{const person=people.find(p=>req.headers.cookie==='uno_session_v2='+p.token);return person?{user:{id:person.id}}:null;}} as any,[origin],async url=>({product:{url,title:'Pink gift',price:'25',currency:'USD',image:'https://images.example/pink.jpg',store:'Gift Store'}}));
+ const http=createServer((req,res)=>void santa.route(req,res));http.listen(0,'127.0.0.1');await once(http,'listening');const url=`http://127.0.0.1:${(http.address() as any).port}`;
+ try{
+  const [host,second,third,other]=people.map(p=>client(url,p.token));
+  let a=(await host('/santa',{name:'Family',wishlistEnabled:true,remindersEnabled:false})).data.exchange;
+  const b=(await other('/santa',{name:'Friends'})).data.exchange;
+  a=(await second('/santa/join',{token:a.inviteToken})).data.exchange;assert(a.inviteToken,'members can share the invite');
+  a=(await third('/santa/join',{token:a.inviteToken})).data.exchange;
+  await second('/santa/join',{token:b.inviteToken});assert.equal((await second('/santa')).data.exchanges.length,2);
+  assert.equal((await other(`/santa/${a.id}/preview-item`,{url:'https://store.example/pink'})).status,404);
+  const draft=(await second(`/santa/${a.id}/preview-item`,{url:'https://store.example/pink'})).data;
+  assert.equal((await third(`/santa/${a.id}/wishlist`,{operation:'add',previewId:draft.previewId})).status,409);
+  assert.equal((await second(`/santa/${b.id}/wishlist`,{operation:'add',previewId:draft.previewId})).status,409);
+  const saved=(await second(`/santa/${a.id}/wishlist`,{operation:'add',previewId:draft.previewId,note:'Size small',title:'Spoofed',userId:people[2].id})).data.exchange;
+  assert.equal(saved.yourItems.length,1);assert.equal(saved.yourItems[0].title,'Pink gift');assert.equal(saved.yourItems[0].note,'Size small');
+  assert.equal((await second(`/santa/${a.id}/wishlist`,{operation:'add',previewId:draft.previewId})).status,409,'preview cannot be reused');
+  const manualPath=`/santa/${b.id}/wishlist`;
+  assert.equal((await other(manualPath,{operation:'add-manual',url:'javascript:alert(1)',details:{title:'Bad link'}})).status,400);
+  const manual=(await other(manualPath,{operation:'add-manual',details:{title:'Cozy blanket',price:'25.00',variant:'Pink'},note:'Machine washable'})).data.exchange.yourItems[0];
+  assert.deepEqual({title:manual.title,url:manual.url,price:manual.price,currency:manual.currency,variant:manual.variant},{title:'Cozy blanket',url:'',price:'25.00',currency:'USD',variant:'Pink'});
+  const partial=(await other(`/santa/${b.id}/preview-item`,{url:'https://store.example/pink'})).data;
+  const edited=(await other(manualPath,{operation:'add',previewId:partial.previewId,details:{title:'Custom title',price:'30'}})).data.exchange.yourItems[1];
+  assert.equal(edited.title,'Custom title');
+  assert.equal(edited.price,'30');
+  assert.equal(edited.image,'https://images.example/pink.jpg');
+  assert.equal((await second(`/santa/${b.id}`)).data.exchange.yourItems.length,0,'per-group wishlist isolation');
+  const hostView=(await host(`/santa/${a.id}`)).data.exchange;assert.equal(hostView.yourItems.length,0);assert(hostView.members.find((p:any)=>p.id===people[1].id).wishlistUpdated);assert(!JSON.stringify(hostView).includes('Pink gift'));
+  assert.equal((await third(`/santa/${a.id}/wishlist`,{operation:'delete',itemId:saved.yourItems[0].id})).status,404);
+  assert.equal((await third(`/santa/${a.id}/settings`,{revision:a.revision,wishlistEnabled:false})).status,403);
+  a=(await host(`/santa/${a.id}/settings`,{revision:a.revision,wishlistEnabled:false,remindersEnabled:true})).data.exchange;
+  assert.equal((await second(`/santa/${a.id}/preview-item`,{url:'https://store.example/pink'})).status,409);
+  a=(await host(`/santa/${a.id}/settings`,{revision:a.revision,wishlistEnabled:true,remindersEnabled:true})).data.exchange;
+  a=(await host(`/santa/${a.id}/draw`,{revision:a.revision})).data.exchange;assert.equal(a.drawn,true,'host may draw with empty wishlists');
+  assert.equal((await host(`/santa/${a.id}/settings`,{revision:a.revision})).status,409);
+  let giver:any;
+  for(const request of [host,second,third]){const reveal=(await request(`/santa/${a.id}/reveal`,{})).data.exchange;if(reveal.recipient.id===people[1].id){assert.equal(reveal.recipient.items.length,1);giver=request;}else assert.equal(reveal.recipient.items.length,0);}
+  await second(`/santa/${a.id}/wishlist`,{operation:'note',itemId:saved.yourItems[0].id,note:'Updated hint'});
+  assert.equal((await giver(`/santa/${a.id}`)).data.exchange.recipient.items[0].note,'Updated hint');
+  const giftId=saved.yourItems[0].id;
+  const purchasePath=`/santa/${a.id}/purchase`;
+  assert.equal((await second(purchasePath,{itemIds:[giftId],purchased:true})).status,404);
+  assert.equal((await giver(purchasePath,{itemIds:[giftId],purchased:true})).status,200);
+  assert.deepEqual((await giver(`/santa/${a.id}`)).data.exchange.recipient.purchasedIds,[giftId]);
+  assert.deepEqual((await second(`/santa/${a.id}`)).data.exchange.recipient.purchasedIds,[]);
+  assert.equal((await giver(purchasePath,{itemIds:[giftId],purchased:false})).status,200);
+  assert.deepEqual((await giver(`/santa/${a.id}`)).data.exchange.recipient.purchasedIds,[]);
+  const persisted=JSON.parse((store.db.prepare('SELECT body FROM gift_exchanges WHERE id=?').get(a.id) as any).body);assert.equal(persisted.items[people[1].id][0].note,'Updated hint');
+  await second(`/santa/${a.id}/wishlist`,{operation:'delete',itemId:saved.yourItems[0].id});assert.equal((await giver(`/santa/${a.id}`)).data.exchange.recipient.items.length,0);
+ }finally{await new Promise<void>(resolve=>http.close(()=>resolve()));store.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('group covers are host-owned, member-only and persistent; completion is reversible without changing assignments',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-santa-covers-')),path=join(dir,'game.sqlite'),store=new Store(path);
+ const people=['Host','Second','Third','Outside'].map(name=>seed(store,name));store.close();let runtime=await launch(path);
+ try{
+  let [host,second,third,outside]=people.map(p=>client(runtime.url,p.token));let ex=(await host('/santa',{name:'Covers'})).data.exchange;const id=ex.id,token=ex.inviteToken;
+  const fallback=ex.cover;assert.match(fallback,/santa-cover-[0-2]\.webp$/);assert.equal(ex.completed,false);assert.equal(ex.yourWishlistUpdated,false);
+  await second('/santa/join',{token});ex=(await third('/santa/join',{token})).data.exchange;
+  assert.equal((await host(`/santa/${id}/complete`,{revision:ex.revision,completed:true})).status,409);
+  const image='data:image/jpeg;base64,/9j/2Q==';
+  assert.equal((await second(`/santa/${id}/cover`,{image})).status,403);
+  assert.equal((await outside(`/santa/${id}/cover`,{image})).status,404);
+  for(const bad of ['https://images.example/picture.jpg','data:image/svg+xml;base64,PHN2Zz4=','data:image/jpeg;base64,bm90YWpwZw==','data:image/jpeg;base64,'+'A'.repeat(140000)])assert.equal((await host(`/santa/${id}/cover`,{image:bad})).status,400);
+  ex=(await host(`/santa/${id}/cover`,{image})).data.exchange;assert.match(ex.cover,/\/api\/game\/santa\/.*\/cover\?v=/);
+  const getCover=async(token:string)=>fetch(runtime.url+`/santa/${id}/cover`,{headers:{cookie:token?'uno_session_v2='+token:''}});
+  assert.equal((await getCover('')).status,401);assert.equal((await getCover(people[3].token)).status,404);
+  const picture=await getCover(people[1].token);assert.equal(picture.status,200);assert.equal(picture.headers.get('content-type'),'image/jpeg');assert.match(picture.headers.get('cache-control')!,/no-store/);assert.deepEqual(Buffer.from(await picture.arrayBuffer()),Buffer.from('/9j/2Q==','base64'));
+  const coverURL=ex.cover;await runtime.server.close();runtime=await launch(path);[host,second,third,outside]=people.map(p=>client(runtime.url,p.token));assert.equal((await host(`/santa/${id}`)).data.exchange.cover,coverURL);
+  ex=(await host(`/santa/${id}/draw`,{revision:ex.revision})).data.exchange;
+  const before=(await second(`/santa/${id}/reveal`,{})).data.exchange.recipient;await second(`/santa/${id}/reveal-viewed`,{});const hostView=(await host('/santa')).data.exchanges[0];assert(!hostView.recipientName,'another person revealing does not reveal the host assignment');assert.equal((await second('/santa')).data.exchanges[0].recipientName,before.name);
+  assert.equal((await second(`/santa/${id}/complete`,{revision:ex.revision,completed:true})).status,403);
+  ex=(await host(`/santa/${id}/complete`,{revision:ex.revision,completed:true})).data.exchange;assert.equal(ex.completed,true);assert.equal((await second('/santa')).data.exchanges[0].completed,true);
+  assert.deepEqual((await second(`/santa/${id}`)).data.exchange.recipient,before);
+  ex=(await host(`/santa/${id}/complete`,{revision:ex.revision,completed:false})).data.exchange;assert.equal(ex.completed,false);
+  ex=(await host(`/santa/${id}/cover`,{image:''})).data.exchange;assert.equal(ex.cover,fallback);assert.equal((await getCover(people[1].token)).status,404);
+ }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
+});
+
+test('names-ready prompt is member-specific until their private reveal is acknowledged and persists across restarts',async()=>{
+ const dir=mkdtempSync(join(tmpdir(),'uno-santa-viewed-')),path=join(dir,'game.sqlite'),store=new Store(path);const people=['Host','Second','Third','Outside'].map(name=>seed(store,name));store.close();let runtime=await launch(path);
+ try{
+  let [host,second,third,outside]=people.map(p=>client(runtime.url,p.token));let ex=(await host('/santa',{name:'Private reveal progress'})).data.exchange;const id=ex.id,token=ex.inviteToken;
+  await second('/santa/join',{token});ex=(await third('/santa/join',{token})).data.exchange;
+  assert.equal((await host(`/santa/${id}/reveal-viewed`,{})).status,409);
+  ex=(await host(`/santa/${id}/draw`,{revision:ex.revision})).data.exchange;
+  assert.equal(ex.revealViewed,false);assert(!ex.recipientName);assert(!ex.recipient);
+  const first=(await host(`/santa/${id}/reveal`,{})).data.exchange;assert(first.recipient);assert.equal(first.revealViewed,false);assert(!first.recipientName,'opening early does not dismiss names-ready');
+  await runtime.server.close();runtime=await launch(path);[host,second,third,outside]=people.map(p=>client(runtime.url,p.token));
+  assert.equal((await host(`/santa/${id}`)).data.exchange.revealViewed,false);
+  assert.equal((await second(`/santa/${id}/reveal-viewed`,{userId:people[0].id})).status,409);
+  assert.equal((await outside(`/santa/${id}/reveal-viewed`,{})).status,404);
+  const seen=(await host(`/santa/${id}/reveal-viewed`,{userId:people[1].id})).data.exchange;assert.equal(seen.revealViewed,true);assert.equal(seen.recipientName,first.recipient.name);assert.deepEqual(seen.recipient,first.recipient);
+  assert.equal((await second(`/santa/${id}`)).data.exchange.revealViewed,false);assert.equal((await third(`/santa/${id}`)).data.exchange.revealViewed,false);
+  assert.equal((await host(`/santa/${id}/reveal-viewed`,{})).data.exchange.revision,seen.revision,'acknowledgement is idempotent and does not change the roster');
+  await runtime.server.close();runtime=await launch(path);[host,second,third,outside]=people.map(p=>client(runtime.url,p.token));
+  assert.equal((await host('/santa')).data.exchanges[0].revealViewed,true);assert.equal((await second('/santa')).data.exchanges[0].revealViewed,false);
+  assert.deepEqual((await host(`/santa/${id}`)).data.exchange.recipient,first.recipient);
  }finally{await runtime.server.close();rmSync(dir,{recursive:true,force:true});}
 });
