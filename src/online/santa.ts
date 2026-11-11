@@ -1,6 +1,6 @@
 import {accountRequest} from './api';
-export type SantaItem={id:string;url:string;title:string;image:string;price:string;currency:string;store:string;note:string;addedAt:number};
-export type SantaProduct=Omit<SantaItem,'id'|'note'|'addedAt'>;
+export type SantaItem={id:string;url:string;title:string;image:string;price:string;currency:string;store:string;note:string;variant?:string;addedAt:number};
+export type SantaProduct=Omit<SantaItem,'id'|'note'|'variant'|'addedAt'>;
 export type SantaPreview={previewId:string;product:SantaProduct;warning?:string};
 export type SantaMember={id:string;name:string;avatar:string;wishlistUpdated?:boolean};
 export type SantaSummary={id:string;name:string;budget:string;date:string;drawn:boolean;count:number;ownerId:string;revision:number;wishlistEnabled:boolean;remindersEnabled:boolean;cover:string;completed:boolean;yourWishlistUpdated:boolean;revealViewed:boolean;recipientName?:string};

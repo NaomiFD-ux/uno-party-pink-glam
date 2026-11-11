@@ -1,7 +1,7 @@
 import {SantaDrawnHub} from './SantaDrawnHub';
 import {SantaNameReveal} from './SantaNameReveal';
 import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
-import {Gift,Link,Lock,Plus,Users,ArrowLeft,ArrowRight,Sparkles,Check,Home,Info,Trash2,ExternalLink,X,Bell,Calendar,Wallet,Copy,Settings,Clock,MoreHorizontal,LayoutGrid,Crown,CheckCircle2,ChevronRight,ShoppingBag,Camera,NotebookPen,MessageCircle,Square,SquareCheck,Menu} from 'lucide-react';
+import {Gift,Link,Lock,Plus,Users,ArrowLeft,ArrowRight,Sparkles,Check,Home,Info,Trash2,ExternalLink,X,Bell,Calendar,Wallet,Copy,Settings,Clock,MoreHorizontal,LayoutGrid,Crown,CheckCircle2,ChevronRight,ShoppingBag,Camera,NotebookPen,MessageCircle,Square,SquareCheck,Menu,Tag} from 'lucide-react';
 import {santaApi,type SantaInvite,type SantaSummary,type SantaView,type SantaItem,type SantaPreview} from '../online/santa';
 type Tab='hub'|'wishlist'|'details'|'members'|'recipient';
 type GroupFilter='all'|'hosting'|'joined'|'completed';
@@ -23,21 +23,25 @@ function ItemCard({item,onDelete,onNote,purchased,onPurchase,busy=false}:{
  purchased?:boolean;onPurchase?:()=>void;busy?:boolean;
 }){
  const [editing,setEditing]=useState(false),[note,setNote]=useState(item.note);
- return <article className={`gift-item ${onDelete?'gift-item-own':''}`}>
+ const appleStore=onPurchase&&(/^apple$/i.test(item.store.trim())||/^https?:\/\/(?:www\.)?apple\.com(?:[/:?#]|$)/i.test(item.url));
+ return <article className={`gift-item ${onDelete?'gift-item-own':onPurchase?'gift-item-recipient':''}`}>
   <WishlistPhoto key={item.image} image={item.image}/>
   <div className="gift-item-copy">
    {onDelete&&item.store&&<span className="gift-own-store">{item.store}</span>}
    <h3>{item.title}</h3>
    {item.price&&<strong>{item.currency==='USD'?'$':item.currency?`${item.currency} `:''}{item.price}</strong>}
-   {item.note&&<p>{item.note}</p>}
+   {item.variant&&<p>{item.variant}</p>}
+   {item.note&&!onPurchase&&<p>{item.note}</p>}
    {editing&&<form onSubmit={event=>{event.preventDefault();onNote?.(note);setEditing(false);}}>
     <textarea aria-label={`Note for ${item.title}`} maxLength={600} value={note} onChange={event=>setNote(event.target.value)}/>
     <button className="santa-secondary" disabled={busy}>Save note</button>
    </form>}
   </div>
   <div className="gift-item-actions">
-   {!onDelete&&item.store&&<span className="gift-item-store">{item.store}</span>}
-   <a href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in store`}><ExternalLink size={21}/></a>
+   <div className="gift-store-actions">
+    {!onDelete&&(item.store||appleStore)&&<span className={`gift-item-store${appleStore?' gift-item-store-apple':''}`} title={item.store}>{appleStore?'Apple':item.store}</span>}
+    {item.url&&<a href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.title} in store`}><ExternalLink size={21}/></a>}
+   </div>
    {onDelete&&<button disabled={busy} onClick={onDelete} aria-label={`Remove ${item.title} from wishlist`}><Trash2 size={21}/></button>}
    {onNote&&<button aria-expanded={editing} onClick={()=>{setNote(item.note);setEditing(value=>!value);}} aria-label={`Edit note for ${item.title}`}><Menu size={21}/></button>}
    {onPurchase&&<button className="gift-purchase-button" disabled={busy} aria-pressed={purchased} onClick={onPurchase}>
@@ -55,7 +59,7 @@ function RecipientWishlist({recipient,busy,onPurchase}:{
  const purchased=new Set(recipient.purchasedIds??[]);
  const notes=recipient.items.filter(item=>item.note);
  const remaining=recipient.items.filter(item=>!purchased.has(item.id));
- return <section className="santa-recipient-wishlist">
+ return <section className="santa-shopping-wishlist">
   <div className="gift-recipient-switch" role="group" aria-label="Recipient wishlist view">
    <button className={showNotes?'santa-secondary':'santa-primary'} aria-pressed={!showNotes} onClick={()=>setShowNotes(false)}><Gift size={18}/>Wishlist ({recipient.items.length})</button>
    <button className={showNotes?'santa-primary':'santa-secondary'} aria-pressed={showNotes} onClick={()=>setShowNotes(true)}><MessageCircle size={18}/>Notes from {recipient.name}</button>
@@ -81,6 +85,7 @@ export function SecretSanta({accountId,initialCreate=false,initialExchangeId='',
  const [name,setName]=useState('Christmas Crew 🎄'),[budget,setBudget]=useState(''),[date,setDate]=useState(`${new Date().getFullYear()}-12-25`),[wishlistEnabled,setWishlistEnabled]=useState(true),[remindersEnabled,setRemindersEnabled]=useState(true);
  const [busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [adding,setAdding]=useState(false),[link,setLink]=useState(''),[note,setNote]=useState(''),[preview,setPreview]=useState<SantaPreview|null>(null),[deleteItem,setDeleteItem]=useState<string|null>(null);
+ const [itemTitle,setItemTitle]=useState(''),[itemPrice,setItemPrice]=useState(''),[itemVariant,setItemVariant]=useState('');
  const working=useRef(false),selectedId=useRef<string|null>(null),version=useRef(0),modal=useRef<HTMLDialogElement>(null),addButton=useRef<HTMLButtonElement>(null);
  selectedId.current=exchange?.id||null;
  const list=useCallback(async()=>{setExchanges(await santaApi.list());},[]);
@@ -99,15 +104,42 @@ export function SecretSanta({accountId,initialCreate=false,initialExchangeId='',
  const create=(event:FormEvent)=>{event.preventDefault();void run(async()=>{setExchange(await santaApi.create({name,budget,date,wishlistEnabled,remindersEnabled}));setCreating(false);setTab('hub');await list();});};
  const act=(action:'draw'|'reveal'|'remove'|'wishlist'|'settings'|'cover'|'complete'|'reveal-viewed'|'purchase',extra:Record<string,unknown>={})=>void run(async()=>{if(!exchange)return;const saved=await santaApi.act(exchange.id,action,{revision:exchange.revision,...extra});setExchange(saved||null);if(action==='reveal'&&saved?.recipient)setShowNameReveal(true);if(action==='wishlist'){setNotice('Your wishlist is saved. Only your assigned giver can see the gifts.');setDeleteItem(null);}setConfirmDraw(false);setConfirmRemove(null);await list();});
  const uploadCover=(id:string,file:File)=>void run(async()=>{const image=await coverPhoto(file),saved=await santaApi.act(id,'cover',{image});if(selectedId.current===id)setExchange(saved||null);await list();setNotice('Your group picture is saved for everyone in this exchange.');});
- useEffect(()=>{if(focusRecipient&&exchange?.drawn)document.querySelector('.santa-recipient-wishlist')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});},[focusRecipient,exchange?.id]);
+ useEffect(()=>{if(focusRecipient&&exchange?.drawn)document.querySelector('.santa-shopping-wishlist')?.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});},[focusRecipient,exchange?.id]);
  const markRevealViewed=()=>{const id=exchange?.id;if(!id)return;void santaApi.act(id,'reveal-viewed').then(saved=>{if(saved)setExchange(current=>current?.id===id?{...current,revealViewed:saved.revealViewed,recipientName:saved.recipientName}:current);return list();}).catch(()=>setNotice('Your person is saved. Replay the reveal if the ready prompt does not update.'));};
  const owner=exchange?.ownerId===accountId,shareLink=exchange?.inviteToken?`${location.origin}/?santa=${encodeURIComponent(exchange.inviteToken)}`:'';
  const copy=()=>void run(async()=>{try{await navigator.clipboard.writeText(shareLink);setNotice('Invite link copied. Anyone in this group can share it.');}catch{setNotice('Your browser couldn’t copy the invitation. Allow clipboard access and try again.');}});
- const openAdd=()=>{setLink('');setNote('');setPreview(null);setAdding(true);setError('');};
+ const openAdd=()=>{
+  setLink('');setNote('');setItemTitle('');setItemPrice('');setItemVariant('');
+  setPreview(null);setAdding(true);setError('');
+ };
+ const updateProductLink=(value:string)=>{
+  setLink(value);
+  if(preview){
+   if(itemTitle===preview.product.title)setItemTitle('');
+   if(itemPrice===preview.product.price)setItemPrice('');
+   setPreview(null);
+  }
+ };
  const previewLink=(url:string)=>void run(async()=>{
-  if(exchange)setPreview(await santaApi.itemPreview(exchange.id,url.trim()));
+  if(!exchange)return;
+  const result=await santaApi.itemPreview(exchange.id,url.trim());
+  setPreview(result);
+  if(result.product.title!==new URL(result.product.url).hostname){
+   setItemTitle(current=>current.trim()?current:result.product.title);
+  }
+  if(result.product.price)setItemPrice(current=>current.trim()?current:result.product.price);
  });
- const saveItem=()=>void run(async()=>{if(!exchange||!preview)return;setExchange((await santaApi.act(exchange.id,'wishlist',{operation:'add',previewId:preview.previewId,note}))!);setAdding(false);setNotice('Gift added to your wishlist.');await list();});
+ const saveItem=()=>void run(async()=>{
+  if(!exchange)return;
+  const details={title:itemTitle,price:itemPrice,variant:itemVariant};
+  const input=preview
+   ?{operation:'add',previewId:preview.previewId,details,note}
+   :{operation:'add-manual',url:link.trim(),details,note};
+  setExchange((await santaApi.act(exchange.id,'wishlist',input))!);
+  setAdding(false);
+  setNotice('Gift added to your wishlist.');
+  await list();
+ });
  const roster=exchange&&<><div className="gift-roster-heading"><h2><Users/>Participants ({exchange.count}/50)</h2><span className="santa-badge"><Clock size={16}/>{exchange.drawn?'Names drawn':'Preparing'}</span></div><ul className="gift-roster">{exchange.members.map(member=><li key={member.id}><img src={member.avatar} alt=""/><strong>{member.name}{member.id===accountId?' (you)':''}{member.id===exchange.ownerId?' 👑':''}</strong>{exchange.wishlistEnabled&&<span className={`gift-ready ${member.wishlistUpdated?'ready':''}`}>{member.wishlistUpdated?<Check size={15}/>:<Clock size={15}/>}<span>{member.wishlistUpdated?'Wishlist Updated':'Update Wishlist'}</span></span>}{owner&&!exchange.drawn&&member.id!==accountId&&<button className="gift-remove-member" disabled={busy} aria-label={`Remove ${member.name}`} onClick={()=>setConfirmRemove(member.id)}><MoreHorizontal size={22}/></button>}</li>)}</ul>{confirmRemove&&<div className="santa-confirm"><p>Remove {exchange.members.find(m=>m.id===confirmRemove)?.name}? Their other exchanges will stay unchanged.</p><button className="santa-secondary" disabled={busy} onClick={()=>act('remove',{memberId:confirmRemove})}>Remove participant</button><button className="santa-text-button" onClick={()=>setConfirmRemove(null)}>Cancel</button></div>}<p className="gift-private-hint"><Lock size={14}/>Joining commits you to this exchange. Contact the host if you need to be removed.</p></>;
  const days=exchange?.date?Math.ceil((new Date(exchange.date+'T23:59:59').getTime()-Date.now())/86400000):null;
  const headerAsset=creating?'exchange-details':exchange?(tab==='details'?'exchange-details':tab==='wishlist'?'my-wishlist':tab==='members'?'members':null):invite?null:'my-exchanges';
@@ -135,7 +167,7 @@ export function SecretSanta({accountId,initialCreate=false,initialExchangeId='',
 
     {roster}
     {!exchange.drawn&&(owner?<section className="gift-draw"><button className="santa-primary" disabled={busy||exchange.count<3} onClick={()=>setConfirmDraw(true)}><Gift/>Draw Names</button><p><Lock size={14}/>{exchange.count<3?'Invite at least 2 more people to draw names.':'You can draw when everyone has joined. Wishlists are optional.'}</p>{confirmDraw&&<div className="santa-confirm" role="group" aria-label="Review before drawing names"><h3>Is everyone here?</h3><p>Draw for these {exchange.count} people? No one can join or be removed after this. Each person can reveal only their own assignment.</p><button className="santa-primary" disabled={busy} onClick={()=>act('draw')}>Yes, draw names now</button><button className="santa-text-button" onClick={()=>setConfirmDraw(false)}>Not yet</button></div>}</section>:<p className="gift-private-hint">Your host will draw names when everyone has joined. You can keep inviting people until then.</p>)}
-   </>):tab==='recipient'&&exchange.recipient?<section className="santa-recipient-page"><button className="santa-back" onClick={()=>setTab('hub')}><ArrowLeft size={17}/>Exchange Hub</button><RecipientWishlist key={exchange.recipient.id} recipient={exchange.recipient} busy={busy} onPurchase={(itemIds,purchased)=>act('purchase',{itemIds,purchased})}/></section>:tab==='wishlist'&&exchange.wishlistEnabled?<section className="gift-wishlist-page"><div className="gift-wishlist-heading"><div><h2><Gift/>My Wishlist ({exchange.yourItems.length})</h2><p>For {exchange.name} · Visible only to you and your assigned giver.</p></div><button ref={addButton} className="gift-add-plus" aria-label="Add gift by link" onClick={openAdd}><Plus size={28}/></button></div>{exchange.yourItems.length?exchange.yourItems.map(item=><div key={item.id}><ItemCard item={item} busy={busy} onDelete={()=>setDeleteItem(item.id)} onNote={value=>act('wishlist',{operation:'note',itemId:item.id,note:value})}/>{deleteItem===item.id&&<div className="santa-confirm"><p>Remove this gift from this exchange’s wishlist?</p><button className="santa-secondary" disabled={busy} onClick={()=>act('wishlist',{operation:'delete',itemId:item.id})}>Remove gift</button><button className="santa-text-button" onClick={()=>setDeleteItem(null)}>Cancel</button></div>}</div>):<div className="gift-empty"><Gift size={48}/><h3>Your wishlist is empty</h3></div>}<button className="santa-primary gift-another" onClick={openAdd}><Plus size={23}/>Add another gift</button></section>:tab==='members'?<section>{shareLink&&<button className="santa-primary" disabled={busy} onClick={copy}><Link size={18}/>Invite Friends</button>}{roster}</section>:<section className="santa-card gift-details"><h2><Info/>Exchange Details</h2><dl><dt>Host</dt><dd>{exchange.members.find(m=>m.id===exchange.ownerId)?.name}</dd><dt>Gift budget</dt><dd>{exchange.budget||'No budget set'}</dd><dt>Gift exchange date</dt><dd>{friendlyDate(exchange.date)}</dd><dt>Wishlists</dt><dd>{exchange.wishlistEnabled?'Enabled · optional before the draw':'Turned off'}</dd><dt>In-app reminders</dt><dd>{exchange.remindersEnabled?'Enabled · shown during the week before your exchange':'Off'}</dd></dl><p>Everyone gives one gift and receives one. No self matches. Only the host draws names, once. Each person’s assignment and gift list stay private.</p>{owner&&<div className="gift-cover-settings"><h3><Camera size={18}/>Group picture</h3><img src={exchange.cover} alt="Current group cover"/><label className="santa-secondary gift-cover-upload">Change picture<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event=>{const file=event.target.files?.[0];if(file)uploadCover(exchange.id,file);event.target.value='';}}/></label><button className="santa-text-button" disabled={busy} onClick={()=>act('cover',{image:''})}>Use Christmas artwork</button></div>}{owner&&exchange.drawn&&<div className="gift-complete-settings"><button className="santa-secondary" disabled={busy} onClick={()=>setConfirmComplete(true)}>{exchange.completed?'Move back to active':'Mark exchange completed'}</button>{confirmComplete&&<div className="santa-confirm"><p>{exchange.completed?'Move this exchange back to active?':'Have you finished exchanging gifts? Move this group to Completed?'} Your saved names and wishlists stay available.</p><button className="santa-primary" disabled={busy} onClick={()=>{act('complete',{completed:!exchange.completed});setConfirmComplete(false);}}>Confirm</button><button className="santa-text-button" onClick={()=>setConfirmComplete(false)}>Cancel</button></div>}</div>}{owner&&!exchange.drawn&&<div className="gift-settings"><h3><Settings size={18}/>Host settings</h3><label className="gift-switch"><span>Wishlists</span><input type="checkbox" role="switch" checked={exchange.wishlistEnabled} disabled={busy} onChange={e=>{act('settings',{wishlistEnabled:e.target.checked,remindersEnabled:exchange.remindersEnabled});if(!e.target.checked)setTab('details');}}/></label><label className="gift-switch"><span>In-app reminders</span><input type="checkbox" role="switch" checked={exchange.remindersEnabled} disabled={busy} onChange={e=>act('settings',{remindersEnabled:e.target.checked,wishlistEnabled:exchange.wishlistEnabled})}/></label></div>}</section>}
+   </>):tab==='recipient'&&exchange.recipient?<section className="santa-recipient-page"><button className="santa-back" onClick={()=>setTab('hub')}><ArrowLeft size={17}/>Exchange Hub</button><RecipientWishlist key={exchange.recipient.id} recipient={exchange.recipient} busy={busy} onPurchase={(itemIds,purchased)=>act('purchase',{itemIds,purchased})}/></section>:tab==='wishlist'&&exchange.wishlistEnabled?<section className="gift-wishlist-page"><div className="gift-wishlist-heading"><div><h2><Gift/>My Wishlist ({exchange.yourItems.length})</h2><p>For {exchange.name} · Visible only to you and your assigned giver.</p></div><button ref={addButton} className="gift-add-plus" aria-label="Add an item" onClick={openAdd}><Plus size={28}/></button></div>{exchange.yourItems.length?exchange.yourItems.map(item=><div key={item.id}><ItemCard item={item} busy={busy} onDelete={()=>setDeleteItem(item.id)} onNote={value=>act('wishlist',{operation:'note',itemId:item.id,note:value})}/>{deleteItem===item.id&&<div className="santa-confirm"><p>Remove this gift from this exchange’s wishlist?</p><button className="santa-secondary" disabled={busy} onClick={()=>act('wishlist',{operation:'delete',itemId:item.id})}>Remove gift</button><button className="santa-text-button" onClick={()=>setDeleteItem(null)}>Cancel</button></div>}</div>):<div className="gift-empty"><Gift size={48}/><h3>Your wishlist is empty</h3></div>}<button className="santa-primary gift-another" onClick={openAdd}><Plus size={23}/>Add another gift</button></section>:tab==='members'?<section>{shareLink&&<button className="santa-primary" disabled={busy} onClick={copy}><Link size={18}/>Invite Friends</button>}{roster}</section>:<section className="santa-card gift-details"><h2><Info/>Exchange Details</h2><dl><dt>Host</dt><dd>{exchange.members.find(m=>m.id===exchange.ownerId)?.name}</dd><dt>Gift budget</dt><dd>{exchange.budget||'No budget set'}</dd><dt>Gift exchange date</dt><dd>{friendlyDate(exchange.date)}</dd><dt>Wishlists</dt><dd>{exchange.wishlistEnabled?'Enabled · optional before the draw':'Turned off'}</dd><dt>In-app reminders</dt><dd>{exchange.remindersEnabled?'Enabled · shown during the week before your exchange':'Off'}</dd></dl><p>Everyone gives one gift and receives one. No self matches. Only the host draws names, once. Each person’s assignment and gift list stay private.</p>{owner&&<div className="gift-cover-settings"><h3><Camera size={18}/>Group picture</h3><img src={exchange.cover} alt="Current group cover"/><label className="santa-secondary gift-cover-upload">Change picture<input type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={event=>{const file=event.target.files?.[0];if(file)uploadCover(exchange.id,file);event.target.value='';}}/></label><button className="santa-text-button" disabled={busy} onClick={()=>act('cover',{image:''})}>Use Christmas artwork</button></div>}{owner&&exchange.drawn&&<div className="gift-complete-settings"><button className="santa-secondary" disabled={busy} onClick={()=>setConfirmComplete(true)}>{exchange.completed?'Move back to active':'Mark exchange completed'}</button>{confirmComplete&&<div className="santa-confirm"><p>{exchange.completed?'Move this exchange back to active?':'Have you finished exchanging gifts? Move this group to Completed?'} Your saved names and wishlists stay available.</p><button className="santa-primary" disabled={busy} onClick={()=>{act('complete',{completed:!exchange.completed});setConfirmComplete(false);}}>Confirm</button><button className="santa-text-button" onClick={()=>setConfirmComplete(false)}>Cancel</button></div>}</div>}{owner&&!exchange.drawn&&<div className="gift-settings"><h3><Settings size={18}/>Host settings</h3><label className="gift-switch"><span>Wishlists</span><input type="checkbox" role="switch" checked={exchange.wishlistEnabled} disabled={busy} onChange={e=>{act('settings',{wishlistEnabled:e.target.checked,remindersEnabled:exchange.remindersEnabled});if(!e.target.checked)setTab('details');}}/></label><label className="gift-switch"><span>In-app reminders</span><input type="checkbox" role="switch" checked={exchange.remindersEnabled} disabled={busy} onChange={e=>act('settings',{remindersEnabled:e.target.checked,wishlistEnabled:exchange.wishlistEnabled})}/></label></div>}</section>}
   </>:<><div className="gift-groups-intro"><h2>All your Christmas plans, together.</h2><p>Every group. Every wishlist. A little Christmas magic.</p></div><nav className="gift-group-filters" aria-label="Filter your exchanges">{([{id:'all',label:'All',Icon:LayoutGrid},{id:'hosting',label:'Hosting',Icon:Crown},{id:'joined',label:'Joined',Icon:Users},{id:'completed',label:'Completed',Icon:CheckCircle2}] as const).map(filter=><button key={filter.id} aria-pressed={groupFilter===filter.id} onClick={()=>setGroupFilter(filter.id)}><filter.Icon size={16}/>{filter.label} ({groupCounts[filter.id]})</button>)}</nav>
    {filteredGroups.length?<div className="gift-group-cards">{filteredGroups.map(ex=><article className="gift-group-card" key={ex.id}>
     <div className="gift-group-cover"><img src={ex.cover} alt="" loading="lazy"/>{ex.ownerId===accountId&&<label className="gift-group-camera" title={`Change picture for ${ex.name}`}><Camera size={15}/><input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Change picture for ${ex.name}`} disabled={busy} onChange={event=>{const file=event.target.files?.[0];if(file)uploadCover(ex.id,file);event.target.value='';}}/></label>}</div>
@@ -161,25 +193,40 @@ export function SecretSanta({accountId,initialCreate=false,initialExchangeId='',
    {error&&adding&&<p className="santa-error" role="alert">{error}</p>}
    <form onSubmit={event=>{
     event.preventDefault();
-    if(preview)saveItem();
-    else previewLink(link);
+    saveItem();
    }}>
     <label>
-     <span className="gift-field-label"><Link size={17}/>Product Link</span>
-     <input autoFocus type="url" required placeholder="https://store.com/your-item" value={link} maxLength={2000} disabled={busy} onChange={event=>{
-      setLink(event.target.value);
-      setPreview(null);
+     <span className="gift-field-label"><Link size={17}/>Product Link <small>(Recommended)</small></span>
+     <input autoFocus type="url" placeholder="https://store.com/your-item" value={link} maxLength={2000} disabled={busy} onChange={event=>{
+      updateProductLink(event.target.value);
      }} onPaste={event=>{
       const url=event.clipboardData.getData('text').trim();
       if(url.length>2000||!/^https?:\/\/\S+$/i.test(url))return;
       event.preventDefault();
-      setLink(url);
-      setPreview(null);
+      updateProductLink(url);
       previewLink(url);
      }}/>
     </label>
+    {link.trim()&&!preview&&<button type="button" className="gift-fetch-details" disabled={busy} onClick={()=>previewLink(link)}>
+     {busy?'Looking up item…':'Fill from link'}
+    </button>}
+    <div className="gift-modal-or" aria-hidden="true">or</div>
+    <label>
+     <span className="gift-field-label"><Tag size={17}/>Item Name</span>
+     <input required maxLength={250} placeholder="e.g., Cozy blanket, perfume, headphones" value={itemTitle} onChange={event=>setItemTitle(event.target.value)}/>
+    </label>
+    <div className="gift-manual-fields">
+     <label>
+      <span className="gift-field-label"><Tag size={17}/>Price <small>(Optional)</small></span>
+      <input maxLength={40} placeholder="$0.00" value={itemPrice} onChange={event=>setItemPrice(event.target.value)}/>
+     </label>
+     <label>
+      <span className="gift-field-label">Size / Color <small>(Optional)</small></span>
+      <input maxLength={120} placeholder="e.g., Medium / Pink" value={itemVariant} onChange={event=>setItemVariant(event.target.value)}/>
+     </label>
+    </div>
     {preview&&<div className="gift-product-preview">
-     <ItemCard item={{...preview.product,id:'preview',note:'',addedAt:0}}/>
+     <ItemCard item={{...preview.product,title:itemTitle||preview.product.title,id:'preview',note:'',addedAt:0}}/>
      {preview.warning&&<p className="gift-preview-warning">{preview.warning}</p>}
      <small>Store prices can change. Check the product page before buying.</small>
     </div>}
@@ -187,8 +234,8 @@ export function SecretSanta({accountId,initialCreate=false,initialExchangeId='',
      <span className="gift-field-label"><NotebookPen size={17}/>Notes <small>(Optional)</small></span>
      <textarea maxLength={600} rows={3} placeholder="Add any details, preferences, or a specific style you like…" value={note} onChange={event=>setNote(event.target.value)}/>
     </label>
-    <button className="santa-primary" disabled={busy||!link.trim()}>
-     <Gift size={19}/>{busy?(preview?'Saving…':'Looking up item…'):(preview?'Add Item':'Preview Item')}
+    <button className="santa-primary" disabled={busy||!itemTitle.trim()}>
+     <Gift size={19}/>Add Item
     </button>
    </form>
   </dialog>

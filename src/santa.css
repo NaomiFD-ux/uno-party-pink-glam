@@ -271,11 +271,41 @@
  border:1px solid #ff8ea8;
  border-radius:22px;
  padding:8px;
- background:#530518a6;
- box-shadow:inset 0 1px 6px #ffb5bd8c,0 0 10px #ff436568;
+ background:linear-gradient(135deg,#680b23d9,#360009e8 56%,#520a19df);
+ box-shadow:inset 0 1px 5px #ffb5bd8c,0 0 12px #ff436568;
 }
-.gift-recipient-list .gift-item{margin:0 0 8px}
-.gift-recipient-list .gift-item:last-child{margin-bottom:0}
+.gift-store-actions{display:flex;align-items:center;gap:5px;min-width:0}
+.gift-recipient-list .gift-item-recipient{
+ grid-template-columns:minmax(74px,33%) minmax(0,1fr) auto auto;
+ gap:clamp(8px,2vw,18px);
+ margin:0;
+ padding:10px 4px;
+ border:0;
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+.gift-item-recipient + .gift-item-recipient{
+ border-top:1px solid transparent;
+ border-image:linear-gradient(90deg,transparent,#ff827c 37%,#ffb69a 52%,transparent) 1;
+}
+.gift-item-recipient>img,.gift-item-recipient .gift-item-placeholder{aspect-ratio:1.6;border-radius:15px}
+.gift-item-recipient h3{margin:0 0 7px}
+.gift-item-recipient strong{
+ color:#ffcfb6;
+ font-size:clamp(15px,3.7vw,23px);
+ text-shadow:0 0 8px #ff90777a,0 0 16px #f54c5480;
+}
+.gift-item-recipient .gift-item-actions{display:contents}
+.gift-item-recipient .gift-item-store{
+ max-width:80px;
+ color:#fff1e5;
+ background:#24070e;
+ border:1px solid #f9bdac;
+}
+.gift-item-recipient .gift-item-store-apple{color:#251313;background:#f9e9d7;border-color:#ffe5d5}
+.gift-item-recipient .gift-store-actions a{flex:none;padding:5px}
+
 .gift-recipient-note{padding:12px;margin:0;color:#ffe2e6}
 .gift-recipient-note h3{font-weight:750}
 .gift-recipient-note p{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -295,8 +325,26 @@
 @media(max-width:767px){
  .gift-item-own .gift-item-actions{flex-direction:row;gap:0}
  .gift-item-own .gift-item-actions button,.gift-item-own .gift-item-actions a{padding:5px}
- .gift-recipient-list .gift-item{grid-template-columns:minmax(55px,26%) minmax(0,1fr) auto;gap:7px}
- .gift-recipient-list .gift-item-actions{display:grid;justify-items:center;gap:2px}
- .gift-recipient-list .gift-item-actions .gift-purchase-button{max-width:65px;font-size:9px}
+ .gift-recipient-list .gift-item-recipient{
+  grid-template-columns:minmax(56px,28%) minmax(0,1fr) minmax(66px,auto);
+  gap:5px 8px;
+ }
+ .gift-item-recipient>img,.gift-item-recipient>.gift-item-placeholder,.gift-item-recipient .gift-item-copy{grid-row:span 2}
+ .gift-item-recipient .gift-store-actions{justify-content:flex-end;gap:2px;align-self:end}
+ .gift-item-recipient .gift-item-store{max-width:58px}
+ .gift-item-recipient .gift-store-actions a{padding:4px}
+ .gift-item-recipient .gift-item-actions .gift-purchase-button{max-width:76px;font-size:9px;justify-self:end;align-self:start}
  .gift-recipient-switch button{font-size:12px}
 }
+.santa-shopping-wishlist .gift-recipient-switch .santa-secondary{
+ color:#fff0e6;
+ border:1px solid #d94f78;
+ background:linear-gradient(#650d25,#32000e);
+ box-shadow:inset 0 1px 3px #f285a04d;
+}
+.gift-modal-or{display:flex;align-items:center;gap:12px;color:#a31b43;font-weight:700}
+.gift-modal-or::before,.gift-modal-or::after{content:"";height:1px;flex:1;background:#e994aa}
+.gift-manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.gift-manual-fields label{min-width:0;margin-top:0}
+.gift-manual-fields .gift-field-label{flex-wrap:wrap;gap:4px}
+.gift-fetch-details{display:block;margin:-5px 0 10px auto;border:0;background:transparent;color:#87143c;text-decoration:underline;font-weight:700}

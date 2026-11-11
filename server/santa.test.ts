@@ -138,6 +138,15 @@ test('multiple groups, shared member invites, settings, and isolated private pro
   const saved=(await second(`/santa/${a.id}/wishlist`,{operation:'add',previewId:draft.previewId,note:'Size small',title:'Spoofed',userId:people[2].id})).data.exchange;
   assert.equal(saved.yourItems.length,1);assert.equal(saved.yourItems[0].title,'Pink gift');assert.equal(saved.yourItems[0].note,'Size small');
   assert.equal((await second(`/santa/${a.id}/wishlist`,{operation:'add',previewId:draft.previewId})).status,409,'preview cannot be reused');
+  const manualPath=`/santa/${b.id}/wishlist`;
+  assert.equal((await other(manualPath,{operation:'add-manual',url:'javascript:alert(1)',details:{title:'Bad link'}})).status,400);
+  const manual=(await other(manualPath,{operation:'add-manual',details:{title:'Cozy blanket',price:'25.00',variant:'Pink'},note:'Machine washable'})).data.exchange.yourItems[0];
+  assert.deepEqual({title:manual.title,url:manual.url,price:manual.price,currency:manual.currency,variant:manual.variant},{title:'Cozy blanket',url:'',price:'25.00',currency:'USD',variant:'Pink'});
+  const partial=(await other(`/santa/${b.id}/preview-item`,{url:'https://store.example/pink'})).data;
+  const edited=(await other(manualPath,{operation:'add',previewId:partial.previewId,details:{title:'Custom title',price:'30'}})).data.exchange.yourItems[1];
+  assert.equal(edited.title,'Custom title');
+  assert.equal(edited.price,'30');
+  assert.equal(edited.image,'https://images.example/pink.jpg');
   assert.equal((await second(`/santa/${b.id}`)).data.exchange.yourItems.length,0,'per-group wishlist isolation');
   const hostView=(await host(`/santa/${a.id}`)).data.exchange;assert.equal(hostView.yourItems.length,0);assert(hostView.members.find((p:any)=>p.id===people[1].id).wishlistUpdated);assert(!JSON.stringify(hostView).includes('Pink gift'));
   assert.equal((await third(`/santa/${a.id}/wishlist`,{operation:'delete',itemId:saved.yourItems[0].id})).status,404);

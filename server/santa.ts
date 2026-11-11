@@ -1,4 +1,4 @@
-import {fetchProduct} from './product-preview';
+import {fetchProduct,productURL} from './product-preview';
 import {randomBytes,randomInt,randomUUID} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
 import type {Store} from './store';
@@ -81,10 +81,33 @@ export function createSanta(store:Store,accounts:Pick<ReturnType<typeof createAc
       ex.wishlistEnabled=input.wishlistEnabled!==false;ex.remindersEnabled=input.remindersEnabled!==false;ex.revision++;save(ex);response={exchange:view(ex,you)};
      }else if(action==='wishlist'){
       if(ex.wishlistEnabled===false)fail('Wishlists are turned off for this exchange.',409);
-      if(input.operation==='add'){
-       const draft=drafts.get(input.previewId);if(!draft||draft.you!==you||draft.exchangeId!==ex.id||draft.expires<Date.now())fail('Preview the link again before saving this gift.',409);
-       const items=ex.items?.[you]||[];if(items.length>=40)fail('You can add up to 40 gifts per exchange.');
-       const note=text(input.note??'',600);ex.items={...ex.items,[you]:[...items,{...draft.product,id:randomUUID(),note,addedAt:Date.now()}]};drafts.delete(input.previewId);
+      if(input.operation==='add'||input.operation==='add-manual'){
+       const items=ex.items?.[you]||[];
+       if(items.length>=40)fail('You can add up to 40 gifts per exchange.');
+       const details=input.details??{};
+       const note=text(input.note??'',600),variant=text(details.variant??'',120);
+       let product:SantaProduct;
+       if(input.operation==='add'){
+        const draft=drafts.get(input.previewId);
+        if(!draft||draft.you!==you||draft.exchangeId!==ex.id||draft.expires<Date.now())return fail('Preview the link again before saving this gift.',409);
+        product={...draft.product};
+       }else{
+        const raw=text(input.url??'',2000);
+        let url:URL|undefined;
+        if(raw){
+         try{url=productURL(raw);}catch(error){return fail((error as Error).message);}
+        }
+        product={url:url?.href??'',store:url?.hostname.replace(/^www\./,'')??'',title:'',price:'',currency:'',image:''};
+       }
+       if(details.title!==undefined)product.title=text(details.title,250,true);
+       if(!product.title)fail('Enter an item name.');
+       if(details.price!==undefined){
+        const price=text(details.price,40);
+        if(price!==product.price)product.currency=/^\d+(?:[.,]\d{1,2})?$/.test(price)?product.currency||'USD':'';
+        product.price=price;
+       }
+       ex.items={...ex.items,[you]:[...items,{...product,id:randomUUID(),note,variant,addedAt:Date.now()}]};
+       if(input.operation==='add')drafts.delete(input.previewId);
       }else if(input.operation==='delete'){
        const items=ex.items?.[you]||[];if(!items.some(item=>item.id===input.itemId))fail('This wishlist item was not found.',404);ex.items={...ex.items,[you]:items.filter(item=>item.id!==input.itemId)};
       }else if(input.operation==='note'){
